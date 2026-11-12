@@ -114,6 +114,21 @@ video { display: block; width: 100%; max-height: 330px; background: #000; border
 .skip-link { position: absolute; z-index: 99; left: 10px; top: -80px; background: var(--surface); padding: 12px; }
 .skip-link:focus { top: 10px; }
 .empty { padding: 35px 20px; text-align: center; }
+label.button { display: inline-flex; align-items: center; justify-content: center; min-height: 46px; padding: 10px 17px; border-radius: 10px; background: var(--accent); color: #fff; font-weight: 650; cursor: pointer; }
+label.button.secondary { color: var(--text); background: var(--soft); border: 1px solid var(--line); }
+label.button.disabled { opacity: .46; pointer-events: none; }
+.scan .actions { margin-top: 4px; }
+.progress { height: 8px; border-radius: 4px; background: var(--soft); overflow: hidden; margin: 16px 0 6px; }
+.progress span { display: block; height: 100%; background: var(--accent); transition: width .2s; }
+.scan-list { list-style: none; padding: 0; margin: 0 0 14px; }
+.scan-list li { display: grid; grid-template-columns: 26px 1fr 84px; gap: 6px 8px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.scan-list li.off { opacity: .45; }
+.scan-list input[type=checkbox] { width: 22px; height: 22px; min-height: 0; }
+.scan-list select { grid-column: 2 / 4; min-height: 40px; padding: 6px 10px; }
+.scan-list .scan-name, .scan-list .scan-price { min-height: 42px; padding: 8px 10px; }
+.scan-note { grid-column: 2 / 4; margin: 0; }
+.ocr-text { white-space: pre-wrap; font-size: .75rem; max-height: 240px; overflow: auto; background: var(--soft); padding: 10px; border-radius: 8px; }
+.scan-save { position: sticky; bottom: calc(76px + env(safe-area-inset-bottom)); background: var(--surface); padding: 10px 0; margin-top: 8px; border-top: 1px solid var(--line); z-index: 2; }
 button.big { min-height: 64px; font-size: 1.2rem; }
 .with-dice { display: flex; gap: 8px; }
 .with-dice .dice { flex-shrink: 0; width: 50px; padding: 0; font-size: 1.3rem; }
@@ -125,6 +140,9 @@ button.big { min-height: 64px; font-size: 1.2rem; }
   .people > li > .actions { width: 100%; justify-content: flex-start; }
   .stepper { gap: 4px; }
   .form-grid { gap: 10px; }
+}
+  @media (prefers-color-scheme: dark) {
+  label.button:not(.secondary) { color: #17241b; }
 }
 @media (prefers-color-scheme: dark) {
   :root { --bg: #171e1a; --surface: #202a23; --text: #e6e9df; --muted: #acb7ac; --accent: #8fbf95; --accent-hover: #add0ad; --line: #3b473d; --soft: #293a2d; --warning: #3a301d; --warning-text: #efd39a; --danger: #f1a099; }

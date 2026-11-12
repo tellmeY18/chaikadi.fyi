@@ -1,9 +1,13 @@
 // Bump this version whenever any app-shell file changes. Cache installation is
 // atomic: one missing dependency fails installation rather than half-caching.
-const CACHE = 'chaikadi-shell-v5';
+const CACHE = 'chaikadi-shell-v6';
+// The ~7 MB menu reader (OCR) is NOT part of the shell: it is cached on first
+// use in its own cache, which survives shell updates. Bump only when
+// vendor/ocr/ files change.
+const OCR_CACHE = 'chaikadi-ocr-v1';
 const SHELL = [
   './', './styles.css', './manifest.json',
-  './js/config.js', './js/state.js', './js/store.js', './js/p2p.js', './js/qr.js', './js/ui.js', './js/main.js',
+  './js/config.js', './js/state.js', './js/store.js', './js/p2p.js', './js/qr.js', './js/ui.js', './js/main.js', './js/ingest.js',
   './vendor/preact.module.js', './vendor/htm.module.js', './vendor/peerjs.min.js', './vendor/qrcode.js', './vendor/jsQR.js',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png',
 ];
@@ -11,7 +15,8 @@ self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)));
 });
 self.addEventListener('activate', event => {
-  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k.startsWith('chaikadi-shell-') && k !== CACHE).map(k => caches.delete(k))))
+  const keep = new Set([CACHE, OCR_CACHE]);
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k.startsWith('chaikadi-') && !keep.has(k)).map(k => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', event => {
@@ -22,6 +27,16 @@ self.addEventListener('fetch', event => {
   // /index.html -> /, and a cached redirect cannot answer a navigation.
   if (event.request.mode === 'navigate') {
     event.respondWith(caches.open(CACHE).then(cache => cache.match('./')).then(cached => cached || fetch(event.request)));
+    return;
+  }
+  if (url.pathname.includes('/vendor/ocr/')) {
+    event.respondWith(caches.open(OCR_CACHE).then(async cache => {
+      const cached = await cache.match(url.pathname);
+      if (cached) return cached;
+      const response = await fetch(url.pathname);
+      if (response.ok) await cache.put(url.pathname, response.clone());
+      return response;
+    }));
     return;
   }
   event.respondWith(caches.open(CACHE).then(async cache => (await cache.match(event.request, { ignoreSearch: true })) || fetch(event.request)));

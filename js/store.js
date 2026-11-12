@@ -302,6 +302,17 @@ export class AppStore {
       if (this.data.role === 'member') this.network.send(link, { type: 'sync', payload: {}, senderId: this.data.identity.id, version: this.data.state?.group.version || 0 });
     }
   }
+  // Scanned/imported items: same-name items are updated in place (keeps their
+  // id, so existing picks survive); others are added. One intent per item.
+  async importMenu(items) {
+    let added = 0, updated = 0;
+    for (const item of items) {
+      const existing = this.view().state.menu.find(i => i.name.normalize('NFKC').toLowerCase() === item.name.trim().normalize('NFKC').toLowerCase());
+      await this.dispatch('menu.upsert', { id: existing?.id || uid(), name: item.name, price: item.price, category: item.category });
+      existing ? updated++ : added++;
+    }
+    return { added, updated };
+  }
   async presets() {
     for (const [name, category] of PRESETS) {
       if (!this.view().state.menu.some(i => i.name.toLowerCase() === name.toLowerCase())) {

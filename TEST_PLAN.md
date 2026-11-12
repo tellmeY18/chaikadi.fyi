@@ -53,6 +53,22 @@ with the **iPhone as host**, since its background suspension is important.
 8. Group → host makes Bala orderer. Only Bala sees **Lock & place order**.
    Non-hosts cannot remove members or reassign the orderer.
 
+## 2b. Menu scanning
+
+1. Online, open Menu once on each phone (downloads the reader, ~7 MB).
+2. iPhone: **Take photo** → opens the rear camera → snap a real printed menu
+   (tea shop board, laminated card). Review list appears in a few seconds.
+   Verify names/prices, untick wrong rows, fix one price, change one category.
+   **Add N items** → items appear on all devices.
+3. Android: **Choose photo** from the gallery; same checks. Re-scan the same
+   menu: rows show “Already on menu — price will update”, no duplicates.
+4. Airplane mode (Wi-Fi off), reopen the app, scan again: still works.
+5. Lock the order: scan buttons are disabled.
+6. Try a blurry/angled photo and a handwritten board: expect few/no items and a
+   clear hint, never a crash. Record accuracy (items found / items on menu).
+7. Laptop Chrome with built-in AI enabled and the model downloaded: review
+   note says “Read with on-device AI”. Everywhere else: “on-device OCR”.
+
 ## 3. Lock/unlock and copy order
 
 1. Bala: Order → Copy order as text. Paste into Notes or a chat draft. It should

@@ -51,6 +51,7 @@ export PLAYWRIGHT_MODULE=/path/to/test-tools/node_modules/playwright/index.mjs
 node tests/browser.mjs                 # real local WebRTC + offline/PWA flow
 BROWSER=webkit node tests/browser.mjs  # WebKit equivalent
 node tests/room.mjs                    # real public signaling; needs internet
+node tests/scan.mjs                    # on-device menu OCR, online + offline
 ```
 
 Set `TEST_URL` to override `http://127.0.0.1:8080`. `SCREENSHOT_PATH` overrides
@@ -124,8 +125,10 @@ users when a new worker is waiting. No forced reload or mid-order `skipWaiting`.
    initial orderer. Keep your app open.
 2. Others type the room code and their name, open your invite link, or scan the
    invite QR. Names must be unique (case-insensitive) within the group.
-3. In **Menu**, add items or tap **Add tea-break presets**. The nine presets start
-   at ₹0. Everyone can edit items and prices while the order is open.
+3. In **Menu**, tap **Take photo** to snap the shop's menu (or **Choose photo**).
+   Items and prices are read on the phone; review/untick/edit, then **Add N
+   items**. Same-name items update their price. Or add items by hand. New
+   groups start with nine tea-break presets at ₹0. Everyone can edit while open.
 4. In **My picks**, use +/−, enter optional item notes and tap **Save note**.
    **Surprise me / Re-roll** is a private suggestion, not a vote.
 5. **Order** shows quantities, notes, per-person details and a copyable summary.
@@ -156,6 +159,36 @@ The orderer's own share is displayed but is not counted as debt to themselves.
 - Saving a bill again, or unlocking, clears current payment marks. Finish may
   archive an estimated-only round if no actual bill was entered; it is labeled
   accordingly. Archived amounts and currencies are not affected by menu edits.
+
+## Menu scanning (on-device)
+
+`js/ingest.js` turns a photo into menu items without any server:
+
+1. The photo is downscaled (max 2000 px), EXIF-rotated, grayscaled and
+   contrast-boosted on a canvas.
+2. **Built-in AI (optional):** if the browser exposes Chrome's Prompt API with
+   image input and the model is *already downloaded* (`availability() ===
+   'available'`), Gemini Nano returns items as JSON (schema-constrained). It
+   never triggers a model download itself. Today this is limited to some
+   desktop Chrome builds; phones use step 3.
+3. **OCR (everywhere):** Tesseract 7 (WASM, vendored) reads words with
+   positions and confidence. `cleanOcrLines()` drops dotted-leader junk and
+   fixes the ₹ sign (absent from the English model, misread as 3/7/¥/%) on
+   low-confidence trailing prices. `parseMenuText()` then extracts
+   `name … price` lines, name/price split across lines, `Rs.`/`/-` styles,
+   decimals and ALL-CAPS names, skips headings/phone/tax lines and guesses
+   the category from keywords (chai/coffee/juice → Tea, samosa/puff → Snacks,
+   biryani/meals/dosa → Meal).
+4. Everyone reviews before saving. Nothing changes until **Add N items**; each
+   saved item is a normal `menu.upsert` intent (validated by the host, synced
+   to everyone, blocked while the order is locked).
+
+Footprint: ~7 MB downloaded once per device the first time the Menu tab is
+opened, then cached for offline use. Photos are never stored or sent; they stay
+in memory for the scan. Works best with a straight, well-lit photo of one
+printed menu section. Handwritten boards and non-Latin scripts (e.g. Malayalam,
+Hindi) are not recognised by the English model; adding a language means
+vendoring its `*.traineddata.gz` and passing `'eng+mal'` to `createWorker`.
 
 ## Connections
 
@@ -340,6 +373,7 @@ chaikadi.fyi/
 │   ├── store.js               subscribed app store, protocol, offline outbox
 │   ├── p2p.js                 framework-free PeerJS/raw WebRTC transport
 │   ├── qr.js                  local generation and camera scan lifecycle
+│   ├── ingest.js              menu photo -> items (on-device AI / OCR + parser)
 │   ├── ui.js                  Preact + htm rendering; subscribes to store
 │   └── main.js                boot, PWA registration, foreground reconnect
 ├── vendor/
@@ -358,7 +392,9 @@ chaikadi.fyi/
 │   ├── state.test.js          reducer, arithmetic, pairing codec, fallback
 │   ├── protocol.test.js       authority, identity, replay and offline sync
 │   ├── browser.mjs            optional real-browser / manual-WebRTC smoke
-│   └── room.mjs               optional public-cloud / room-reconnect smoke
+│   ├── room.mjs               optional public-cloud / room-reconnect smoke
+│   ├── scan.mjs               optional real-browser menu-scan test
+│   └── ingest.test.js         menu text parser / OCR cleanup unit tests
 └── tools/
     ├── serve.py               local dev server (bigger connection queue)
     └── generate-icons.mjs     optional dependency-free icon utility
@@ -380,6 +416,10 @@ provided to the reducer, keeping it deterministic and straightforward to test.
 6. Order from history with unavailable-item and price-change review.
 
 See [TEST_PLAN.md](TEST_PLAN.md) for the real-device acceptance checklist.
+
+Bundled third-party code and data: Preact, htm, PeerJS, qrcode-generator,
+jsQR, tesseract.js / tesseract.js-core and the Tesseract English model (all
+MIT or Apache-2.0).
 
 ## License
 

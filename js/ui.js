@@ -92,6 +92,65 @@ class Pairing extends Component {
   }
 }
 
+// Snap a menu -> review -> add. Extraction runs entirely on this device.
+class MenuScan extends Component {
+  constructor(props) { super(props); this.state = { busy: false, progress: 0, label: '', result: null }; }
+  componentDidMount() { import('./ingest.js').then(m => m.prefetchOCR()).catch(() => {}); }
+  async scan(file) {
+    if (!file) return;
+    this.setState({ busy: true, progress: 0, label: 'Preparing photo…', result: null });
+    try {
+      const { extractMenu } = await import('./ingest.js');
+      const result = await extractMenu(file, { onProgress: (progress, label) => this.setState({ progress, label }) });
+      const known = new Set(this.props.state.menu.map(i => i.name.normalize('NFKC').toLowerCase()));
+      result.items = result.items.map((item, i) => ({ ...item, key: i, keep: true, exists: known.has(item.name.normalize('NFKC').toLowerCase()) }));
+      this.setState({ busy: false, result });
+      if (!result.items.length) this.props.store.notice('Couldn’t find items with prices. Try a closer, straight, well-lit photo of one section.');
+    } catch (error) {
+      this.setState({ busy: false });
+      this.props.store.notice(error.message || 'Could not read that photo.');
+    }
+  }
+  update(key, patch) {
+    this.setState({ result: { ...this.state.result, items: this.state.result.items.map(i => i.key === key ? { ...i, ...patch } : i) } });
+  }
+  async save() {
+    const items = this.state.result.items.filter(i => i.keep && i.name.trim());
+    try {
+      const { added, updated } = await this.props.store.importMenu(items);
+      this.setState({ result: null });
+      this.props.store.notice(`Menu saved: ${added} added${updated ? `, ${updated} prices updated` : ''}.`);
+    } catch (error) { this.props.store.notice(error.message); }
+  }
+  render({ state, locked }) {
+    const { busy, progress, label, result } = this.state;
+    const currency = state.group.currency;
+    const picker = (text, capture, cls) => html`<label class=${`button ${cls} ${locked || busy ? 'disabled' : ''}`}>${text}
+      <input type="file" accept="image/*" capture=${capture || undefined} hidden disabled=${locked || busy}
+        onChange=${e => { const f = e.currentTarget.files?.[0]; e.currentTarget.value = ''; this.scan(f); }}/></label>`;
+    const chosen = result?.items.filter(i => i.keep).length || 0;
+    return html`<div class="card scan">
+      ${!result && html`<div class="row"><div><h2>📷 Snap the menu</h2><p class="muted">Items and prices are read on this phone. Nothing is uploaded.</p></div></div>
+        <div class="actions">${picker('Take photo', 'environment', '')}${picker('Choose photo', null, 'secondary')}</div>`}
+      ${busy && html`<div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow=${Math.round(progress * 100)} aria-label=${label}><span style=${`width:${Math.max(4, progress * 100)}%`}></span></div><p class="muted" role="status">${label} ${Math.round(progress * 100)}%</p>`}
+      ${result && html`<div>
+        <h2>Found ${result.items.length} item${result.items.length === 1 ? '' : 's'}</h2>
+        <p class="muted">Check names and prices, untick anything wrong. ${result.engine === 'built-in' ? 'Read with on-device AI.' : 'Read with on-device OCR.'}</p>
+        <ul class="scan-list">${result.items.map(item => html`<li key=${item.key} class=${item.keep ? '' : 'off'}>
+          <input type="checkbox" checked=${item.keep} aria-label=${`Include ${item.name}`} onChange=${e => this.update(item.key, { keep: e.currentTarget.checked })}/>
+          <input class="scan-name" value=${item.name} maxlength="60" aria-label="Item name" onInput=${e => this.update(item.key, { name: e.currentTarget.value })}/>
+          <input class="scan-price" type="number" inputmode="decimal" min="0" step="0.01" value=${(item.price / 100).toFixed(item.price % 100 ? 2 : 0)} aria-label=${`Price (${currency})`}
+            onInput=${e => { const n = Math.round(Number(e.currentTarget.value) * 100); if (Number.isSafeInteger(n) && n >= 0) this.update(item.key, { price: n }); }}/>
+          <select aria-label="Category" value=${item.category} onChange=${e => this.update(item.key, { category: e.currentTarget.value })}>${CATEGORIES.map(c => html`<option value=${c}>${c}</option>`)}</select>
+          ${item.exists && html`<small class="scan-note">Already on menu — price will update</small>`}
+        </li>`)}</ul>
+        ${result.text && html`<details><summary>Show recognised text</summary><pre class="ocr-text">${result.text}</pre></details>`}
+        <div class="actions scan-save"><button disabled=${!chosen || locked} onClick=${() => this.save()}>Add ${chosen} item${chosen === 1 ? '' : 's'} to menu</button><button class="quiet" onClick=${() => this.setState({ result: null })}>Cancel</button></div>
+      </div>`}
+    </div>`;
+  }
+}
+
 class App extends Component {
   constructor(props) {
     super(props); this.state = { view: props.store.view(), edit: null, scanRoom: false, copyFallback: null, homeMode: 'create' };
@@ -157,6 +216,7 @@ class App extends Component {
     const s = v.state, locked = s.group.status !== 'open';
     const edit = s.menu.find(i => i.id === this.state.edit);
     return html`<section><div class="section-heading"><p class="eyebrow">SOMETHING FOR EVERYONE</p><h1>The menu</h1><p>Anyone can edit. Prices are per item.</p></div>
+      <${MenuScan} store=${this.props.store} state=${s} locked=${locked}/>
       <button class="secondary" disabled=${locked} onClick=${() => this.run(() => this.props.store.presets())}>＋ Add tea-break presets</button>
       ${locked && html`<p class="warning">Menu and picks are frozen while the order is locked.</p>`}
       ${CATEGORIES.map(category => {
