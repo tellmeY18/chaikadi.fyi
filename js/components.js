@@ -26,6 +26,7 @@ const paths = {
   book: 'M4 4h7a3 3 0 0 1 3 3v14a3 3 0 0 0-3-3H4z M20 4h-6 M20 4v14h-6',
   external: 'M14 3h7v7 M21 3L11 13 M18 14v7H3V6h7',
   clock: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0 M12 7v5l3 2',
+  refresh: 'M20 4v6h-6 M4 20v-6h6 M19 10A8 8 0 0 0 5 7 M5 14a8 8 0 0 0 14 3',
 };
 export function Icon({ name, size = 24 }) {
   return html`<svg class="icon" viewBox="0 0 24 24" width=${size} height=${size} fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true"><path d=${paths[name] || paths.menu}/></svg>`;

@@ -2,6 +2,11 @@
 // Functions own interpolation/plurals; values never contain HTML.
 const en = {
   app: 'Chaikadi', tagline: 'Decide, order, split.', source: 'Source code (AGPL-3.0)',
+  updateReady: 'A new version of Chaikadi is ready.', updateNow: 'Update now', updating: 'Updating…',
+  updateKeeps: 'Your group, picks and history are kept. The app restarts once and reconnects.',
+  updateManual: 'Note: people connected by manual pairing will need to pair again.',
+  appSection: 'App', version: v => `Version ${v}`, checkUpdates: 'Check for updates', checking: 'Checking…',
+  upToDate: 'You have the latest version.', updateFound: 'Update ready. Tap Update now at the top.', updateOffline: 'You are offline. Try again when connected.',
   library: 'Pick from library', libraryTitle: 'Menu library', libraryCity: 'City', librarySearch: 'Search by name',
   libraryLoading: 'Opening the menu library…', libraryOfflineEmpty: 'The menu library isn’t saved on this device yet. Connect to the internet once, then it works offline.',
   libraryNoCities: 'No cities in the menu library yet.', libraryNoResults: 'No places match that name.', libraryFailed: 'Could not open the menu library.',

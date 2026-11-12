@@ -222,3 +222,5 @@ progress::-webkit-progress-bar { background: var(--tint); } progress::-webkit-pr
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } .shuffle-result.striking { animation: reduced-shuffle 300ms linear !important; } dialog.sheet { animation: sheet-fade 120ms !important; } }
 @keyframes reduced-shuffle { from { opacity: .5; } to { opacity: 1; } }
 @keyframes sheet-fade { from { opacity: 0; } to { opacity: 1; } }
+.update-banner { flex-wrap: wrap; }
+.update-banner > button { flex-basis: 100%; }

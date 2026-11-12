@@ -1,6 +1,6 @@
 import { h, render, Component } from '../vendor/preact.module.js';
 import htm from '../vendor/htm.module.js';
-import { CATEGORIES, uid, funGroup, validCode, DATA_BASE_URL, DATA_REPO_URL, SUGGEST_ENDPOINT } from './config.js';
+import { CATEGORIES, uid, funGroup, validCode, DATA_BASE_URL, DATA_REPO_URL, SUGGEST_ENDPOINT, APP_VERSION } from './config.js';
 import { costs, debts, activeItems, activeMenu, libraryChanges } from './state.js';
 import { buildSuggestion, suggestionIssueUrl, sendSuggestion } from './data.js';
 import { LibrarySheet } from './library-ui.js';
@@ -340,6 +340,10 @@ class App extends Component {
   settings(v) {
     const s = v.state, store = this.props.store;
     return html`<section>${heading(t('settings'))}
+      <section class="stack"><h2>${t('appSection')}</h2><p>${t('version', APP_VERSION)}</p>
+        ${v.updateReady ? html`<button class="primary" disabled=${v.updating} onClick=${() => store.applyUpdate?.()}>${t(v.updating ? 'updating' : 'updateNow')}</button>`
+          : html`<button disabled=${this.state.checking} onClick=${async () => { this.setState({ checking: true }); const r = await (store.checkForUpdate?.() ?? 'current'); this.setState({ checking: false }); store.toast(t(r === 'ready' ? 'updateFound' : r === 'offline' ? 'updateOffline' : 'upToDate')); }}>${t(this.state.checking ? 'checking' : 'checkUpdates')}</button>`}
+      </section>
       <section class="stack"><h2>${t('libraryTitle')}</h2><p>${t('libraryAttribution')} <a href=${`${DATA_REPO_URL}#readme`} target="_blank" rel="noopener noreferrer">${t('libraryReadme')}</a></p>
         <form class="stack" onSubmit=${e => { e.preventDefault(); const url = fields(e).url; this.run(async () => { await store.setDataBaseUrl(url); store.toast(t('librarySaved')); }); }}>
           <label>${t('libraryUrl')}<input name="url" type="url" inputmode="url" required spellcheck=${false} autocapitalize="off" defaultValue=${v.config.dataBaseUrl || DATA_BASE_URL} key=${v.config.dataBaseUrl || DATA_BASE_URL}/></label>
@@ -428,6 +432,7 @@ class App extends Component {
       ${this.state.appMenu && html`<nav class="app-menu" aria-label=${t('more')}>${s && html`<button onClick=${() => this.go('lobby')}><${Icon} name="user"/>${t('group')}</button><button onClick=${() => this.go('history')}><${Icon} name="history"/>${t('history')}</button>`}<button onClick=${() => this.go('settings')}><${Icon} name="settings"/>${t('settings')}</button>${v.role && html`<button onClick=${() => { this.setState({ appMenu: false }); store.showManual(); }}><${Icon} name="offline"/>${t('pair')}</button>`}</nav>`}
       </header><main id="main">
         ${!v.ready ? html`<p role="status">${t('opening')}</p>` : html`
+          ${v.updateReady && html`<div class="banner info update-banner" role="status"><${Icon} name="refresh"/><span><strong>${t('updateReady')}</strong> ${t('updateKeeps')}${[...store.network.links.values()].some(l => l.mode === 'manual') ? html`<small>${t('updateManual')}</small>` : ''}</span><button class="primary" disabled=${v.updating} onClick=${() => store.applyUpdate?.()}>${t(v.updating ? 'updating' : 'updateNow')}</button></div>`}
           ${v.storageWarning && html`<div class="banner error" role="alert"><${Icon} name="alert"/><span><strong>${t('error')}</strong> ${v.storageWarning}</span></div>`}
           ${v.notice && html`<div class="banner error" role="alert"><${Icon} name="alert"/><span><strong>${t('error')}</strong> ${v.notice}</span><button class="quiet icon-button" aria-label=${t('dismiss')} onClick=${() => store.notice('')}><${Icon} name="close"/></button></div>`}
           ${v.role === 'member' && s && !v.hostOnline && html`<div class="banner warning" role="status"><${Icon} name="offline"/><span>${t('hostOffline')}<small>${t('queued', v.pending)}</small></span></div>`}

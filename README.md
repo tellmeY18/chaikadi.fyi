@@ -60,6 +60,7 @@ node tests/room.mjs                    # real public signaling; needs internet
 node tests/scan.mjs                    # on-device menu OCR, online + offline
 node tests/design.mjs                  # multiple menus, themes, sheets, 200% text
 node tests/library.mjs                 # menu library import, offline, hash checks
+node tests/update.mjs                  # in-app update: waits, Update now, state kept
 node --test tests/data.test.js         # library client only (no browser)
 ```
 
@@ -115,10 +116,16 @@ must be present. Do not rename or remove a precached file without updating it.
 
 ### Updating the app
 
-Bump `CACHE` in `sw.js` whenever an app or vendor file changes, then deploy the
-complete directory together. The new shell is precached atomically. Updates wait
-until all existing app windows close, preserving active orders. The app tells
-users when a new worker is waiting. No forced reload or mid-order `skipWaiting`.
+Bump `CACHE` in `sw.js` (and `APP_VERSION` in `js/config.js`) whenever an app or
+vendor file changes, then deploy the complete directory together. The new shell
+is precached atomically and then **waits**: an active order never switches
+versions by itself. The app checks for updates when it returns to the
+foreground (at most every 30 minutes) and from **Settings → Check for updates**.
+When one is ready, a banner offers **Update now**: the app saves everything,
+activates the new worker and restarts the page once (running new JavaScript
+requires that). Groups, picks, history and queued changes are restored and
+room-code connections reconnect; manual pairings must pair again (the banner
+says so when one is active). Tested by `node tests/update.mjs`.
 
 ## Install on phones
 
