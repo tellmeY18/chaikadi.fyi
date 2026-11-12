@@ -61,6 +61,7 @@ node tests/scan.mjs                    # on-device menu OCR, online + offline
 node tests/design.mjs                  # multiple menus, themes, sheets, 200% text
 node tests/library.mjs                 # menu library import, offline, hash checks
 node tests/update.mjs                  # in-app update: waits, Update now, state kept
+node tests/live-library.mjs            # production smoke: chaikadi.fyi + data host
 node --test tests/data.test.js         # library client only (no browser)
 ```
 
