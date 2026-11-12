@@ -275,9 +275,9 @@ IndexedDB only.
 **CORS:** GitHub Pages sends `Access-Control-Allow-Origin: *`. Check:
 
 ```sh
-curl -sI -H "Origin: https://chaikadi.fyi" https://data.chaikadi.fyi/manifest.json | grep -i access-control
+curl -sI -H "Origin: https://chaikadi.fyi" https://data.chaikadi.fyi/v2/manifest.json | grep -i access-control
 # In the browser console on https://chaikadi.fyi:
-fetch('https://data.chaikadi.fyi/manifest.json', { credentials: 'omit' }).then(r => r.json()).then(console.log)
+fetch('https://data.chaikadi.fyi/v2/manifest.json', { credentials: 'omit' }).then(r => r.json()).then(console.log)
 ```
 
 Data repo setup, deployment and the library test plan are in

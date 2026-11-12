@@ -12,10 +12,10 @@ const base = process.env.TEST_URL || 'http://127.0.0.1:8080';
 const DATA = 'http://localhost:8099/library-test';
 
 // A non-sample copy of the first fixture place, so the share prompt applies.
-const bundle = JSON.parse(readFileSync(new URL('fixtures/data/index/in-kl-ernakulam.json', import.meta.url), 'utf8'));
+const bundle = JSON.parse(readFileSync(new URL('fixtures/data/v2/index/in-kl-ernakulam.json', import.meta.url), 'utf8'));
 bundle.places[0] = { ...bundle.places[0], name: 'Test Chai Corner', sample: undefined };
 const bundleText = JSON.stringify(bundle);
-const manifest = JSON.parse(readFileSync(new URL('fixtures/data/manifest.json', import.meta.url), 'utf8'));
+const manifest = JSON.parse(readFileSync(new URL('fixtures/data/v2/manifest.json', import.meta.url), 'utf8'));
 manifest.cities[0].sha256 = createHash('sha256').update(bundleText).digest('hex');
 manifest.cities[0].bytes = Buffer.byteLength(bundleText);
 const tampered = bundleText.replace('"Chai"', '"Tea!"');
@@ -25,8 +25,8 @@ async function setup(context, { bundleBody = bundleText } = {}) {
   await context.route('**/*', route => {
     const url = route.request().url();
     const headers = { 'content-type': 'application/json', 'access-control-allow-origin': '*' };
-    if (url === `${DATA}/manifest.json`) return route.fulfill({ status: 200, headers, body: JSON.stringify(manifest) });
-    if (url === `${DATA}/index/in-kl-ernakulam.json`) return route.fulfill({ status: 200, headers, body: bundleBody });
+    if (url === `${DATA}/v2/manifest.json`) return route.fulfill({ status: 200, headers, body: JSON.stringify(manifest) });
+    if (url === `${DATA}/v2/index/in-kl-ernakulam.json`) return route.fulfill({ status: 200, headers, body: bundleBody });
     if (new URL(url).origin === new URL(base).origin) return route.continue();
     external.push(url); return route.abort();
   });
@@ -54,7 +54,7 @@ try {
   const { page, errors, external } = await setup(context);
   await nav(page, 'Menu');
   await page.getByRole('button', { name: 'Pick from library', exact: true }).click();
-  await sheet(page).locator('.library-result').nth(2).waitFor();
+  await sheet(page).locator('.library-result').nth(3).waitFor();
   assert.equal(await sheet(page).getByLabel('City').inputValue(), 'in/kl/ernakulam');
   assert.equal(await sheet(page).getByText('Sample', { exact: true }).count(), 2, 'samples are labelled');
   for (const chip of await sheet(page).locator('.fresh-chip').allTextContents()) {
@@ -64,7 +64,8 @@ try {
   await sheet(page).locator('.library-result').first().waitFor();
   assert.equal(await sheet(page).locator('.library-result').count(), 1);
   await sheet(page).locator('.library-result').first().click();
-  await sheet(page).getByText('Prices last confirmed 2026-11-01. node/9000000000001', { exact: true }).waitFor();
+  await sheet(page).getByText('in/kl/ernakulam/sample-chai-corner-kaloor', { exact: true }).waitFor();
+  await sheet(page).getByText('Prices last confirmed 2026-11-01. From the menu board.', { exact: true }).waitFor();
   await sheet(page).getByRole('button', { name: 'Use this menu', exact: true }).click();
   await page.getByText(/Test Chai Corner: 8 added/).waitFor();
   await page.getByRole('heading', { name: 'Test Chai Corner', exact: true }).waitFor();
@@ -78,6 +79,17 @@ try {
   await sheet(page).getByRole('button', { name: 'Add missing items only', exact: true }).click();
   await page.getByText('Test Chai Corner: 0 added.', { exact: true }).waitFor();
   assert.equal(await page.locator('.item-list li').count(), 8);
+
+  // A rich v2 place: location, tax, sections with hours, variants, seasonal, unsure.
+  await page.getByRole('button', { name: 'Pick from library', exact: true }).click();
+  await sheet(page).getByLabel('Search by name').fill('cyber green');
+  await sheet(page).locator('.library-result').first().getByText('Restaurant · Inside Prestige Cyber Green, Phase 1 · Kakkanad 682042', { exact: true }).waitFor();
+  await sheet(page).locator('.library-result').first().click();
+  for (const text of ['Taxes are extra. Prices exclusive of all taxes.', '08:00–12:00', 'Breads', 'Chicken Biriyani (Half)', 'Seasonal', 'Unsure: name partly illegible ("SAMA")', '2 pcs']) {
+    assert.ok(await sheet(page).getByText(text, { exact: true }).count() > 0, text);
+  }
+  assert.ok(await sheet(page).locator('li', { hasText: 'Chicken Biriyani (Half)' }).getByText('Rs 160', { exact: true }).isVisible());
+  await sheet(page).getByRole('button', { name: 'Close', exact: true }).click();
 
   // Group raises a price, orders, and finishes the round.
   await page.getByRole('button', { name: 'Edit items', exact: true }).click();
@@ -100,7 +112,7 @@ try {
   await page.getByText('Opened a prefilled GitHub issue in a new tab.', { exact: true }).waitFor();
   const issue = new URL(external.find(u => u.startsWith('https://github.com/')));
   assert.equal(issue.pathname, '/tellmeY18/chaikadi-data/issues/new');
-  assert.equal(issue.searchParams.get('place-id'), 'node/9000000000001');
+  assert.equal(issue.searchParams.get('place-id'), 'in/kl/ernakulam/sample-chai-corner-kaloor');
   assert.equal(issue.searchParams.get('changes'), 'Chai | Tea | 14');
   assert.ok(![...issue.searchParams.values()].some(v => /Crew|Anu|Host/.test(v)), 'no group or member data');
 
@@ -109,7 +121,7 @@ try {
   const before = external.length;
   await nav(page, 'Menu');
   await page.getByRole('button', { name: 'Pick from library', exact: true }).click();
-  await sheet(page).locator('.library-result').nth(2).waitFor();
+  await sheet(page).locator('.library-result').nth(3).waitFor();
   await sheet(page).getByText('Showing saved menus. Updates download when you are online.', { exact: true }).waitFor();
   assert.equal(external.length, before);
   await context.setOffline(false);
@@ -134,5 +146,5 @@ try {
   await sheet(e.page).getByText('Downloaded menus did not match the library index, so they were not used.', { exact: true }).waitFor();
   assert.equal(await sheet(e.page).locator('.library-result').count(), 0);
   await evil.close();
-  console.log(`${process.env.BROWSER || 'chromium'}: library search, freshness chips, samples, import add/replace, opt-in share, offline cache, offline-empty and hash rejection passed.`);
+    console.log(`${process.env.BROWSER || 'chromium'}: library search, freshness chips, samples, import add/replace, opt-in share, offline cache, offline-empty and hash rejection passed.`);
 } finally { await browser.close(); }

@@ -9,11 +9,16 @@
 // hash does not match is discarded; the last good copy is kept.
 import { DATA_BASE_URL, DATA_FETCH_TIMEOUT_MS, validateDataBaseUrl } from './config.js';
 
-export const LIBRARY_CATEGORIES = ['Tea', 'Coffee', 'Snacks', 'Meal', 'Other'];
-export const LIMITS = Object.freeze({ manifestBytes: 128 * 1024, bundleBytes: 512 * 1024, cities: 500, places: 3000, items: 150, text: 80 });
+export const LIBRARY_CATEGORIES = ['Tea', 'Coffee', 'Drinks', 'Snacks', 'Meal', 'Dessert', 'Other'];
+export const LIMITS = Object.freeze({ manifestBytes: 128 * 1024, bundleBytes: 512 * 1024, cities: 500, places: 3000, items: 300, sections: 40, text: 80, note: 160 });
 const OSM_ID = /^(node|way|relation)\/[1-9][0-9]{0,14}$/;
+const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const CITY_ID = /^[a-z]{2}\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME = /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$|^24:00$/;
+const DAYS = ['mo', 'tu', 'we', 'th', 'fr', 'sa', 'su'];
+// A place key: v2 slug, or an OSM ref for places from v1-only data hosts.
+export const isPlaceId = id => typeof id === 'string' && id.length <= 60 && (SLUG.test(id) || OSM_ID.test(id));
 
 export class DataError extends Error {
   constructor(code, message) { super(message); this.code = code; }
@@ -27,10 +32,12 @@ export function cleanText(value, max = LIMITS.text) {
     .replace(/\s+/g, ' ').trim().slice(0, max).trim();
 }
 const isDate = v => typeof v === 'string' && DATE.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`));
-const toPrice = v => (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 10000 ? Math.round(v * 100) / 100 : null);
+const toPrice = v => (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100000 ? Math.round(v * 100) / 100 : null);
+const optText = (out, key, value, max = LIMITS.text) => { const t = cleanText(value, max); if (t) out[key] = t; };
 
+// Manifest v2 (current) or v1 (older data hosts). Same shape afterwards.
 export function sanitizeManifest(raw) {
-  if (!raw || typeof raw !== 'object' || raw.schemaVersion !== 1 || !Array.isArray(raw.cities)) throw new DataError('invalid', 'The library index is not in a supported format.');
+  if (!raw || typeof raw !== 'object' || ![1, 2].includes(raw.schemaVersion) || !Array.isArray(raw.cities)) throw new DataError('invalid', 'The library index is not in a supported format.');
   const fresh = Number.isInteger(raw.freshness?.freshDays) ? raw.freshness.freshDays : 90;
   const stale = Number.isInteger(raw.freshness?.staleDays) ? raw.freshness.staleDays : 365;
   const cities = [];
@@ -38,34 +45,114 @@ export function sanitizeManifest(raw) {
     if (!c || !CITY_ID.test(c.id) || typeof c.url !== 'string' || !/^index\/[a-z0-9-]{1,120}\.json$/.test(c.url) ||
         !/^[0-9a-f]{64}$/.test(c.sha256) || !Number.isInteger(c.bytes) || c.bytes < 2 || c.bytes > LIMITS.bundleBytes) continue;
     if (cities.some(x => x.id === c.id)) continue;
-    cities.push({ id: c.id, name: cleanText(c.name) || c.id, placeCount: Number.isInteger(c.placeCount) && c.placeCount >= 0 ? c.placeCount : 0, url: c.url, sha256: c.sha256, bytes: c.bytes });
+    cities.push({ id: c.id, name: cleanText(c.name) || c.id, placeCount: Number.isInteger(c.placeCount) && c.placeCount >= 0 ? c.placeCount : 0, url: c.url, sha256: c.sha256, bytes: c.bytes, schemaVersion: raw.schemaVersion });
   }
-  return { schemaVersion: 1, generatedAt: typeof raw.generatedAt === 'string' ? raw.generatedAt.slice(0, 30) : '',
+  return { schemaVersion: raw.schemaVersion, generatedAt: typeof raw.generatedAt === 'string' ? raw.generatedAt.slice(0, 30) : '',
     freshness: { freshDays: Math.min(Math.max(fresh, 1), 3650), staleDays: Math.min(Math.max(stale, fresh), 3650) },
     cities: cities.sort((a, b) => a.name.localeCompare(b.name)) };
 }
 
+function sanitizeHours(raw) {
+  if (!Array.isArray(raw)) return undefined;
+  const out = raw.slice(0, 14).filter(h => h && TIME.test(h.open) && TIME.test(h.close)).map(h => {
+    const days = Array.isArray(h.days) ? [...new Set(h.days.filter(d => DAYS.includes(d)))] : [];
+    return { ...(days.length ? { days } : {}), open: h.open, close: h.close };
+  });
+  return out.length ? out : undefined;
+}
+
+function sanitizeItem(raw, ids) {
+  if (!raw || typeof raw !== 'object') return null;
+  const id = typeof raw.id === 'string' && SLUG.test(raw.id) && raw.id.length <= 60 ? raw.id : null;
+  const name = cleanText(raw.name);
+  if (!id || !name || ids.has(id)) return null;
+  const item = { id, name, category: LIBRARY_CATEGORIES.includes(raw.category) ? raw.category : 'Other' };
+  optText(item, 'localName', raw.localName);
+  optText(item, 'description', raw.description, LIMITS.note);
+  const variants = Array.isArray(raw.variants) ? raw.variants.slice(0, 10).map(v => ({ name: cleanText(v?.name, 40), price: toPrice(v?.price), portion: cleanText(v?.portion, 40) }))
+    .filter(v => v.name && v.price !== null).map(v => (v.portion ? v : { name: v.name, price: v.price })) : [];
+  if (variants.length >= 2) item.variants = variants;
+  else if (toPrice(raw.price) !== null) item.price = toPrice(raw.price);
+  if (['market', 'seasonal', 'ask'].includes(raw.priceStatus)) item.priceStatus = raw.priceStatus;
+  if (item.price === undefined && !item.variants && !item.priceStatus) return null;
+  optText(item, 'portion', raw.portion, 40);
+  if (['veg', 'vegan', 'egg', 'non-veg'].includes(raw.diet)) item.diet = raw.diet;
+  if (Number.isInteger(raw.spice) && raw.spice >= 0 && raw.spice <= 3) item.spice = raw.spice;
+  if (raw.addOn === true) item.addOn = true;
+  item.available = raw.available !== false;
+  if (raw.uncertain === true) item.uncertain = true;
+  optText(item, 'note', raw.note, LIMITS.note);
+  ids.add(id);
+  return item;
+}
+
+function sanitizeSections(raw, ids, depth = 0, counter = { n: 0 }) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const s of raw.slice(0, depth ? 20 : LIMITS.sections)) {
+    const name = cleanText(s?.name);
+    if (!name) continue;
+    const section = { id: typeof s.id === 'string' && SLUG.test(s.id) ? s.id : `s${out.length}`, name };
+    const hours = sanitizeHours(s.hours);
+    if (hours) section.hours = hours;
+    optText(section, 'note', s.note, LIMITS.note);
+    if (!depth && Array.isArray(s.sections)) {
+      section.sections = sanitizeSections(s.sections, ids, 1, counter);
+      if (!section.sections.length) continue;
+    } else {
+      section.items = [];
+      for (const raw of Array.isArray(s.items) ? s.items : []) {
+        if (counter.n >= LIMITS.items) break;
+        const item = sanitizeItem(raw, ids);
+        if (item) { section.items.push(item); counter.n++; }
+      }
+      if (!section.items.length) continue;
+    }
+    out.push(section);
+  }
+  return out;
+}
+
+// One shape for the app, from v2 places or v1 (flat-menu) places.
 export function sanitizePlace(raw) {
-  if (!raw || typeof raw !== 'object' || !OSM_ID.test(raw.id) || !isDate(raw.last_confirmed)) return null;
+  if (!raw || typeof raw !== 'object' || !isPlaceId(raw.id) || !isDate(raw.last_confirmed)) return null;
   const name = cleanText(raw.name);
   const currency = typeof raw.currency === 'string' && /^[A-Z]{3}$/.test(raw.currency) ? raw.currency : null;
-  if (!name || !currency || !Array.isArray(raw.menu)) return null;
-  const menu = [], ids = new Set();
-  for (const item of raw.menu.slice(0, LIMITS.items)) {
-    const itemName = cleanText(item?.name), price = toPrice(item?.price);
-    const id = typeof item?.id === 'string' && /^[a-z0-9-]{1,60}$/.test(item.id) ? item.id : null;
-    if (!itemName || price === null || !id || ids.has(id)) continue;
-    ids.add(id);
-    const clean = { id, name: itemName, category: LIBRARY_CATEGORIES.includes(item.category) ? item.category : 'Other', price, available: item.available !== false };
-    if (typeof item.veg === 'boolean') clean.veg = item.veg;
-    menu.push(clean);
+  if (!name || !currency) return null;
+  const ids = new Set();
+  let sections;
+  if (Array.isArray(raw.sections)) sections = sanitizeSections(raw.sections, ids);
+  else if (Array.isArray(raw.menu)) {
+    const items = raw.menu.slice(0, 150).map(i => sanitizeItem({ ...i, diet: i?.veg === true ? 'veg' : undefined }, ids)).filter(Boolean);
+    sections = items.length ? [{ id: 'menu', name: 'Menu', items }] : [];
+  } else return null;
+  if (!sections.length) return null;
+  const place = { id: raw.id, name, currency, last_confirmed: raw.last_confirmed, sample: raw.sample === true, sections };
+  optText(place, 'localName', raw.localName);
+  if (['tea-stall', 'cafe', 'restaurant', 'canteen', 'bakery', 'juice-shop', 'food-court-stall', 'hotel', 'other'].includes(raw.kind)) place.kind = raw.kind;
+  if (raw.osm && ['node', 'way', 'relation'].includes(raw.osm.type) && Number.isSafeInteger(raw.osm.id) && raw.osm.id > 0 && ['is', 'inside', 'near'].includes(raw.osm.relation)) {
+    place.osm = { type: raw.osm.type, id: raw.osm.id, relation: raw.osm.relation };
+  } else if (OSM_ID.test(raw.id)) {
+    const [type, id] = raw.id.split('/');
+    place.osm = { type, id: Number(id), relation: 'is' };
   }
-  if (!menu.length) return null;
-  return { id: raw.id, name, currency, last_confirmed: raw.last_confirmed, sample: raw.sample === true, itemCount: menu.length, menu };
+  if (raw.location && typeof raw.location === 'object') {
+    const location = {};
+    for (const key of ['building', 'floor', 'area']) optText(location, key, raw.location[key], key === 'floor' ? 40 : LIMITS.text);
+    if (typeof raw.location.postcode === 'string' && /^[A-Z0-9][A-Z0-9 -]{1,9}$/.test(raw.location.postcode)) location.postcode = raw.location.postcode;
+    if (Object.keys(location).length) place.location = location;
+  }
+  if (typeof raw.tax?.included === 'boolean') { place.tax = { included: raw.tax.included }; optText(place.tax, 'note', raw.tax.note, LIMITS.note); }
+  const hours = sanitizeHours(raw.hours);
+  if (hours) place.hours = hours;
+  optText(place, 'note', raw.note, LIMITS.note);
+  if (['in-person', 'printed-menu', 'menu-board', 'bill'].includes(raw.source)) place.source = raw.source;
+  place.itemCount = sections.reduce((n, s) => n + (s.items || s.sections.flatMap(x => x.items)).length, 0);
+  return place;
 }
 
 export function sanitizeBundle(raw, cityId) {
-  if (!raw || typeof raw !== 'object' || raw.schemaVersion !== 1 || raw.city !== cityId || !Array.isArray(raw.places)) {
+  if (!raw || typeof raw !== 'object' || ![1, 2].includes(raw.schemaVersion) || raw.city !== cityId || !Array.isArray(raw.places)) {
     throw new DataError('invalid', 'This city’s menus are not in a supported format.');
   }
   const places = [], seen = new Set();
@@ -76,6 +163,37 @@ export function sanitizeBundle(raw, cityId) {
   return { city: cityId, generatedAt: typeof raw.generatedAt === 'string' ? raw.generatedAt.slice(0, 30) : '', places };
 }
 
+// Every item with where it is on the menu.
+export function placeItems(place) {
+  const out = [];
+  for (const section of place.sections || []) {
+    for (const item of section.items || []) out.push({ item, section, subsection: null });
+    for (const sub of section.sections || []) for (const item of sub.items) out.push({ item, section, subsection: sub });
+  }
+  return out;
+}
+// The orderable lines a group can import: one per priced item or variant.
+// Same-named items get the section that tells them apart; unpriced items
+// (seasonal, market price, ask) are left out because a group menu needs a price.
+export function orderableItems(place) {
+  const entries = placeItems(place);
+  const counts = new Map();
+  for (const { item } of entries) counts.set(item.name.toLowerCase(), (counts.get(item.name.toLowerCase()) || 0) + 1);
+  const words = s => s.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).map(w => w.replace(/s$/, ''));
+  const label = (item, section, sub) => {
+    const own = new Set(words(item.name));
+    return sub && words(sub.name).some(w => !own.has(w)) ? sub.name : section.name;
+  };
+  const out = [];
+  for (const { item, section, subsection } of entries) {
+    if (item.available === false) continue;
+    const base = counts.get(item.name.toLowerCase()) > 1 ? `${item.name} (${label(item, section, subsection)})` : item.name;
+    if (item.variants) for (const v of item.variants) out.push({ name: `${base} (${v.name})`, category: item.category, price: v.price });
+    else if (typeof item.price === 'number') out.push({ name: base, category: item.category, price: item.price });
+  }
+  return out;
+}
+
 // ---- freshness and search -------------------------------------------------
 export function freshnessOf(lastConfirmed, { freshDays = 90, staleDays = 365 } = {}, now = new Date()) {
   const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
@@ -83,9 +201,11 @@ export function freshnessOf(lastConfirmed, { freshDays = 90, staleDays = 365 } =
   return { days, status: days <= freshDays ? 'fresh' : days <= staleDays ? 'stale' : 'unverified' };
 }
 const fold = s => s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+// Name, local name and location words (e.g. "cyber green", "kakkanad").
 export function matchPlaces(places, query) {
   const tokens = fold(cleanText(query, 60)).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-  const hits = places.filter(p => { const name = fold(p.name); return tokens.every(t => name.includes(t)); });
+  const text = p => fold([p.name, p.localName, p.location?.building, p.location?.area, p.location?.postcode].filter(Boolean).join(" "));
+  const hits = places.filter(p => { const all = text(p); return tokens.every(t => all.includes(t)); });
   const q = tokens.join(' ');
   return hits.sort((a, b) => Number(fold(b.name).startsWith(q)) - Number(fold(a.name).startsWith(q)) || a.name.localeCompare(b.name));
 }
@@ -130,12 +250,14 @@ async function sha256Hex(bytes) {
 export function createDataClient({ baseUrl = DATA_BASE_URL, fetchImpl = (...a) => globalThis.fetch(...a), storage = idbStorage(),
   timeoutMs = DATA_FETCH_TIMEOUT_MS, online = () => globalThis.navigator?.onLine !== false } = {}) {
   const base = validateDataBaseUrl(baseUrl);
-  const manifestUrl = `${base}/manifest.json`;
+  // v2 (rich) first; v1 for data hosts that only publish the older format.
+  const manifestUrls = { 2: `${base}/v2/manifest.json`, 1: `${base}/manifest.json` };
   const listeners = new Set();
   const inflight = new Map();
   const memory = new Map(); // cityId -> bundle (verified)
   const emit = event => { for (const fn of listeners) { try { fn(event); } catch { /* listener bug must not break data */ } } };
-  const key = (kind, id = '') => `${kind}:${base}:${id}`;
+  // v2: cached data uses the sectioned place shape (older caches are ignored).
+  const key = (kind, id = '') => `v2:${kind}:${base}:${id}`;
 
   async function fetchBytes(url, { reload, max }) {
     const controller = new AbortController();
@@ -160,7 +282,12 @@ export function createDataClient({ baseUrl = DATA_BASE_URL, fetchImpl = (...a) =
 
   function refreshManifest({ reload = true } = {}) {
     return once('manifest', async () => {
-      const manifest = sanitizeManifest(parse(await fetchBytes(manifestUrl, { reload, max: LIMITS.manifestBytes })));
+      let manifest;
+      try { manifest = sanitizeManifest(parse(await fetchBytes(manifestUrls[2], { reload, max: LIMITS.manifestBytes }))); }
+      catch (error) {
+        if (error.code !== 'http') throw error;
+        manifest = sanitizeManifest(parse(await fetchBytes(manifestUrls[1], { reload, max: LIMITS.manifestBytes })));
+      }
       const previous = await storage.get(key('manifest'));
       await storage.set(key('manifest'), { data: manifest, fetchedAt: Date.now() });
       if (JSON.stringify(previous?.data) !== JSON.stringify(manifest)) emit({ type: 'manifest', manifest });
@@ -180,7 +307,8 @@ export function createDataClient({ baseUrl = DATA_BASE_URL, fetchImpl = (...a) =
 
   function refreshBundle(entry, { reload = true } = {}) {
     return once(`bundle:${entry.id}`, async () => {
-      const bytes = await fetchBytes(new URL(entry.url, manifestUrl).href, { reload, max: Math.min(entry.bytes, LIMITS.bundleBytes) });
+      const from = manifestUrls[entry.schemaVersion] || manifestUrls[2];
+      const bytes = await fetchBytes(new URL(entry.url, from).href, { reload, max: Math.min(entry.bytes, LIMITS.bundleBytes) });
       if (await sha256Hex(bytes) !== entry.sha256) {
         throw new DataError('hash-mismatch', 'Downloaded menus did not match the library index, so they were not used.');
       }
@@ -215,7 +343,7 @@ export function createDataClient({ baseUrl = DATA_BASE_URL, fetchImpl = (...a) =
   }
 
   async function getPlace(id, cityId) {
-    if (!OSM_ID.test(id)) return null;
+    if (!isPlaceId(id)) return null;
     if (cityId) {
       const bundle = memory.get(cityId) || (await loadCityBundle(cityId)).bundle;
       const place = bundle.places.find(p => p.id === id);
@@ -255,7 +383,7 @@ export function subscribeData(fn) { appListeners.add(fn); return () => appListen
 // ---- suggestions (no personal data) ------------------------------------------
 // changes: [{ name, category, price (rupees) }]. Category must be a library one.
 export function buildSuggestion({ placeId, city, name, changes, seen }) {
-  if (!OSM_ID.test(placeId) || !CITY_ID.test(city) || !isDate(seen)) throw new DataError('invalid', 'Cannot prepare that suggestion.');
+  if (!isPlaceId(placeId) || !CITY_ID.test(city) || !isDate(seen)) throw new DataError('invalid', 'Cannot prepare that suggestion.');
   const clean = (changes || []).slice(0, LIMITS.items).map(c => ({ name: cleanText(c.name), category: LIBRARY_CATEGORIES.includes(c.category) ? c.category : 'Other', price: toPrice(c.price) }))
     .filter(c => c.name && c.price !== null && !/[|\n]/.test(c.name));
   return { schemaVersion: 1, kind: 'update-menu', placeId, city, name: cleanText(name), seen, changes: clean };
@@ -265,7 +393,8 @@ export function suggestionIssueUrl(suggestion, repoUrl, maxLength = 6000) {
   const url = new URL(`${repoUrl.replace(/\/+$/, '')}/issues/new`);
   url.searchParams.set('template', 'update-menu.yml');
   url.searchParams.set('title', `Update menu: ${suggestion.name || suggestion.placeId}`.slice(0, 120));
-  url.searchParams.set('place-id', suggestion.placeId);
+  // The update form identifies a place as <city>/<place-id>.
+  url.searchParams.set('place-id', OSM_ID.test(suggestion.placeId) ? suggestion.placeId : `${suggestion.city}/${suggestion.placeId}`);
   url.searchParams.set('date-seen', suggestion.seen);
   const lines = [];
   for (const change of suggestion.changes) {

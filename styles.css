@@ -173,6 +173,14 @@ details[open] summary { margin-bottom: 16px; }
 .library-name { font-weight: 700; overflow-wrap: anywhere; }
 .library-preview h3 { margin-top: 16px; }
 .library-preview .chip-row { margin-bottom: 12px; }
+.local-name { margin: -8px 0 12px; }
+.place-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 0 0 12px; font-size: .875rem; line-height: 1.4286; }
+.place-facts dt { font-weight: 700; }
+.place-facts dd { margin: 0; overflow-wrap: anywhere; }
+.menu-subsection { margin-top: 16px; }
+.menu-subsection > h4 { margin: 0 0 4px; font-size: 1rem; }
+.menu-section > h3 + .caption, .menu-subsection > h4 + .caption { margin: 0 0 4px; }
+.item-list li.unavailable .leader { text-decoration: line-through; }
 .install-hint { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 32px; padding-top: 16px; border-top: var(--rule-hair); }
 .install-hint details { margin: 0; flex: 1; }
 footer { display: flex; flex-wrap: wrap; gap: 12px 16px; font-size: .75rem; line-height: 1.3333; color: var(--muted); border-top: var(--rule-hair); padding-top: 16px; margin-top: 48px; }

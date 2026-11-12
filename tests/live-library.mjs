@@ -15,7 +15,7 @@ try {
   await page.goto(APP);
   await page.getByText('Offline app ready', { exact: true }).waitFor({ timeout: 30000 });
   // CORS from the app's origin, credentials omitted, as the app does it.
-  const cors = await page.evaluate(async () => { const r = await fetch('https://data.chaikadi.fyi/manifest.json', { credentials: 'omit', cache: 'reload' }); return { ok: r.ok, cities: (await r.json()).cities.length }; });
+  const cors = await page.evaluate(async () => { const r = await fetch('https://data.chaikadi.fyi/v2/manifest.json', { credentials: 'omit', cache: 'reload' }); return { ok: r.ok, cities: (await r.json()).cities.length }; });
   assert.deepEqual(cors, { ok: true, cities: 1 });
 
   await page.getByRole('button', { name: 'Pair without internet', exact: true }).click();
@@ -23,7 +23,7 @@ try {
   await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Menu', exact: true }).click();
   await page.getByRole('button', { name: 'Pick from library', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'Menu library' });
-  await sheet.locator('.library-result').nth(2).waitFor({ timeout: 30000 });
+  await sheet.locator('.library-result').nth(3).waitFor({ timeout: 30000 });
   const chips = await sheet.locator('.fresh-chip').allTextContents();
   console.log('results:', (await sheet.locator('.library-name').allTextContents()).join(' | '));
   console.log('chips:', chips.join(' | '));
@@ -41,7 +41,7 @@ try {
   await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Menu', exact: true }).click();
   await page.getByRole('heading', { name: 'Sample Chai Corner, Kaloor', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Pick from library', exact: true }).click();
-  await sheet.locator('.library-result').nth(2).waitFor();
+  await sheet.locator('.library-result').nth(3).waitFor();
   await sheet.getByText('Showing saved menus. Updates download when you are online.', { exact: true }).waitFor();
   await context.setOffline(false);
   assert.deepEqual(errors, []);

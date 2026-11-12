@@ -7,11 +7,12 @@ export const DEFAULT_CONFIG = {
 };
 export const ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
 // Shown in Settings. Bump with the service-worker cache version on release.
-export const APP_VERSION = '2026.11.12-2';
+export const APP_VERSION = '2026.11.12-3';
 // Multi-menu writes require the same protocol on every peer. Storage remains
 // schema 1 with an additive migration; old app versions must not drop menu IDs.
 // v3: menus can record the library place they were imported from.
-export const PROTOCOL_VERSION = 3;
+// v4: library places have their own ids (not only OSM refs) and 7 categories.
+export const PROTOCOL_VERSION = 4;
 
 // MENU LIBRARY HOOK. Volunteer-maintained CC0 menu data (static JSON).
 // DATA_BASE_URL can be overridden per device in Settings; the service worker

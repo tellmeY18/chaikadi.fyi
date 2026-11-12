@@ -1,6 +1,7 @@
 import { DEFAULT_CONFIG, PRESETS, PROTOCOL_VERSION, uid, roomCode, validCode, validateConfig, validateDataBaseUrl, funName } from './config.js';
 import { newGroup, reduce, Persistence, migrate } from './state.js';
 import { Network, PUBLIC_INTENTS, encodePairing, decodePairing, compatibilityPairing } from './p2p.js';
+import { orderableItems } from './data.js';
 
 const copy = value => JSON.parse(JSON.stringify(value));
 const sameText = (a, b) => a.normalize('NFKC').toLowerCase() === b.normalize('NFKC').toLowerCase();
@@ -336,12 +337,15 @@ export class AppStore {
   //              library are removed
   //  'add'     – only add items the linked menu does not have yet
   async importLibraryPlace(place, city, mode = 'new') {
+    // Group menus are flat and need a price: variants become "Name (Half)",
+    // unpriced and unavailable items are skipped. Library categories map onto
+    // the app's four (drinks are "Tea", desserts are "Snacks").
+    const APP_CATEGORY = { Tea: 'Tea', Coffee: 'Tea', Drinks: 'Tea', Snacks: 'Snacks', Dessert: 'Snacks', Meal: 'Meal', Other: 'Other' };
     const items = [];
-    for (const item of place.menu) {
-      if (item.available === false) continue;
+    for (const item of orderableItems(place)) {
       const name = item.name.slice(0, 60).trim();
       if (items.some(i => sameText(i.name, name))) continue;
-      items.push({ name, category: item.category === 'Coffee' ? 'Tea' : item.category, price: Math.round(item.price * 100), libraryCategory: item.category });
+      items.push({ name, category: APP_CATEGORY[item.category] || 'Other', price: Math.round(item.price * 100), libraryCategory: item.category });
     }
     const source = { placeId: place.id, city, name: place.name, lastConfirmed: place.last_confirmed, sample: place.sample === true,
       items: items.map(i => ({ name: i.name, category: i.libraryCategory, price: i.price })) };

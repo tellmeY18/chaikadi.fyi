@@ -12,12 +12,12 @@ const sameName = (a, b) => a.normalize('NFKC').toLowerCase() === b.normalize('NF
 
 // Where an imported menu came from: a snapshot of the library prices (in
 // minor units) so later edits can be offered back as suggested updates.
-const LIBRARY_CATEGORIES = ['Tea', 'Coffee', 'Snacks', 'Meal', 'Other'];
+const LIBRARY_CATEGORIES = ['Tea', 'Coffee', 'Drinks', 'Snacks', 'Meal', 'Dessert', 'Other'];
 function menuSource(value) {
   if (value === null || value === undefined) return null;
-  assert(value && typeof value === 'object' && /^(node|way|relation)\/[1-9][0-9]{0,14}$/.test(value.placeId) &&
+  assert(value && typeof value === 'object' && (/^(node|way|relation)\/[1-9][0-9]{0,14}$/.test(value.placeId) || /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value.placeId)) && value.placeId.length <= 60 &&
     /^[a-z]{2}\/[a-z0-9-]{1,60}\/[a-z0-9-]{1,60}$/.test(value.city) && /^\d{4}-\d{2}-\d{2}$/.test(value.lastConfirmed) &&
-    Array.isArray(value.items) && value.items.length <= 150, 'Invalid menu library link.');
+    Array.isArray(value.items) && value.items.length <= 300, 'Invalid menu library link.');
   return {
     placeId: value.placeId, city: value.city, name: text(value.name, 80, 'Library place name'), lastConfirmed: value.lastConfirmed,
     sample: value.sample === true,
