@@ -1,0 +1,635 @@
+{
+  "app": "chaikadi.fyi",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "scale": 2
+  },
+  "capturedAt": "2026-11-12T16:12:58.245Z",
+  "screens": [
+    {
+      "id": "01",
+      "name": "Home",
+      "flow": "Start and join",
+      "file": "01-home.png",
+      "hotspots": [
+        {
+          "label": "Create a group",
+          "to": "04",
+          "x": 16,
+          "y": 222,
+          "w": 358,
+          "h": 48
+        },
+        {
+          "label": "Join with a code",
+          "to": "03",
+          "x": 16,
+          "y": 286,
+          "w": 358,
+          "h": 48
+        },
+        {
+          "label": "Group and display names",
+          "to": "02",
+          "x": 16,
+          "y": 430,
+          "w": 358,
+          "h": 44
+        }
+      ]
+    },
+    {
+      "id": "02",
+      "name": "Home names",
+      "flow": "Start and join",
+      "file": "02-home-names.png",
+      "hotspots": [
+        {
+          "label": "Create a group",
+          "to": "04",
+          "x": 16,
+          "y": 222,
+          "w": 358,
+          "h": 48
+        },
+        {
+          "label": "Join with a code",
+          "to": "03",
+          "x": 16,
+          "y": 286,
+          "w": 358,
+          "h": 48
+        }
+      ]
+    },
+    {
+      "id": "03",
+      "name": "Join with a code",
+      "flow": "Start and join",
+      "file": "03-join-with-a-code.png",
+      "hotspots": [
+        {
+          "label": "Back",
+          "to": "01",
+          "x": 16,
+          "y": 222,
+          "w": 358,
+          "h": 48
+        }
+      ]
+    },
+    {
+      "id": "04",
+      "name": "Group",
+      "flow": "Start and join",
+      "file": "04-group.png",
+      "hotspots": [
+        {
+          "label": "Show QR",
+          "to": "05",
+          "x": 196,
+          "y": 423,
+          "w": 143,
+          "h": 48
+        },
+        {
+          "label": "Open app menu",
+          "to": "24",
+          "x": 330,
+          "y": 6,
+          "w": 44,
+          "h": 44
+        },
+        {
+          "label": "Menu tab",
+          "to": "06",
+          "x": 8,
+          "y": 780,
+          "w": 88,
+          "h": 64
+        }
+      ]
+    },
+    {
+      "id": "05",
+      "name": "Group QR",
+      "flow": "Start and join",
+      "file": "05-group-qr.png",
+      "hotspots": [
+        {
+          "label": "Hide QR",
+          "to": "04",
+          "x": 196,
+          "y": 423,
+          "w": 143,
+          "h": 48
+        },
+        {
+          "label": "Menu tab",
+          "to": "06",
+          "x": 8,
+          "y": 780,
+          "w": 88,
+          "h": 64
+        }
+      ]
+    },
+    {
+      "id": "06",
+      "name": "Menu empty",
+      "flow": "Menus and library",
+      "file": "06-menu-empty.png",
+      "hotspots": [
+        {
+          "label": "Snap a menu",
+          "to": "12",
+          "x": 16,
+          "y": 478,
+          "w": 182,
+          "h": 48
+        },
+        {
+          "label": "Add item",
+          "to": "11",
+          "x": 206,
+          "y": 478,
+          "w": 153,
+          "h": 48
+        },
+        {
+          "label": "Pick from library",
+          "to": "07",
+          "x": 16,
+          "y": 534,
+          "w": 239,
+          "h": 48
+        },
+        {
+          "label": "My picks tab",
+          "to": "13",
+          "x": 104,
+          "y": 780,
+          "w": 88,
+          "h": 64
+        }
+      ]
+    },
+    {
+      "id": "07",
+      "name": "Library",
+      "flow": "Menus and library",
+      "file": "07-library.png",
+      "hotspots": [
+        {
+          "label": "Sample Chai Corner",
+          "to": "08",
+          "x": 35,
+          "y": 579,
+          "w": 320,
+          "h": 78
+        },
+        {
+          "label": "Close",
+          "to": "06",
+          "x": 311,
+          "y": 319,
+          "w": 44,
+          "h": 44
+        }
+      ]
+    },
+    {
+      "id": "08",
+      "name": "Library preview",
+      "flow": "Menus and library",
+      "file": "08-library-preview.png",
+      "hotspots": [
+        {
+          "label": "Use this menu",
+          "to": "09",
+          "x": 35,
+          "y": 724,
+          "w": 320,
+          "h": 48
+        },
+        {
+          "label": "Back to results",
+          "to": "07",
+          "x": 35,
+          "y": 186,
+          "w": 164,
+          "h": 48
+        }
+      ]
+    },
+    {
+      "id": "09",
+      "name": "Menu",
+      "flow": "Menus and library",
+      "file": "09-menu.png",
+      "hotspots": [
+        {
+          "label": "Edit items",
+          "to": "10",
+          "x": 177,
+          "y": 282,
+          "w": 172,
+          "h": 48
+        },
+        {
+          "label": "Snap a menu",
+          "to": "12",
+          "x": 16,
+          "y": 430,
+          "w": 182,
+          "h": 48
+        },
+        {
+          "label": "Add item",
+          "to": "11",
+          "x": 206,
+          "y": 430,
+          "w": 153,
+          "h": 48
+        },
+        {
+          "label": "Pick from library",
+          "to": "07",
+          "x": 16,
+          "y": 486,
+          "w": 239,
+          "h": 48
+        },
+        {
+          "label": "My picks tab",
+          "to": "13",
+          "x": 104,
+          "y": 780,
+          "w": 88,
+          "h": 64
+        }
+      ]
+    },
+    {
+      "id": "10",
+      "name": "Menu edit",
+      "flow": "Menus and library",
+      "file": "10-menu-edit.png",
+      "hotspots": [
+        {
+          "label": "Done",
+          "to": "09",
+          "x": 177,
+          "y": 282,
+          "w": 114,
+          "h": 48
+        },
+        {
+          "label": "Edit Chai",
+          "to": "11",
+          "x": 16,
+          "y": 694,
+          "w": 114,
+          "h": 48
+        }
+      ]
+    },
+    {
+      "id": "11",
+      "name": "Add item",
+      "flow": "Menus and library",
+      "file": "11-add-item.png",
+      "hotspots": [
+        {
+          "label": "Save",
+          "to": "09",
+          "x": 35,
+          "y": 772,
+          "w": 320,
+          "h": 48
+        },
+        {
+          "label": "Close",
+          "to": "09",
+          "x": 311,
+          "y": 416,
+          "w": 44,
+          "h": 44
+        }
+      ]
+    },
+    {
+      "id": "12",
+      "name": "Snap a menu",
+      "flow": "Menus and library",
+      "file": "12-snap-a-menu.png",
+      "hotspots": [
+        {
+          "label": "Close",
+          "to": "09",
+          "x": 311,
+          "y": 568,
+          "w": 44,
+          "h": 44
+        }
+      ]
+    },
+    {
+      "id": "13",
+      "name": "My picks",
+      "flow": "Picking",
+      "file": "13-my-picks.png",
+      "hotspots": [
+        {
+          "label": "Can’t decide?",
+          "to": "15",
+          "x": 16,
+          "y": 201,
+          "w": 177,
+          "h": 48
+        },
+        {
+          "label": "Chai (note)",
+          "to": "14",
+          "x": 28,
+          "y": 265,
+          "w": 44,
+          "h": 44
+        },
+        {
+          "label": "Order tab",
+          "to": "16",
+          "x": 199,
+          "y": 780,
+          "w": 88,
+          "h": 64
+        }
+      ]
+    },
+    {
+      "id": "14",
+      "name": "Item note",
+      "flow": "Picking",
+      "file": "14-item-note.png",
+      "hotspots": [
+        {
+          "label": "Save note",
+          "to": "13",
+          "x": 35,
+          "y": 772,
+          "w": 320,
+          "h": 48
+        },
+        {
+          "label": "Close",
+          "to": "13",
+          "x": 311,
+          "y": 504,
+          "w": 44,
+          "h": 44
+        }
+      ]
+    },
+    {
+      "id": "15",
+      "name": "Can’t decide",
+      "flow": "Picking",
+      "file": "15-can-t-decide.png",
+      "hotspots": [
+        {
+          "label": "Add to my picks",
+          "to": "13",
+          "x": 35,
+          "y": 708,
+          "w": 320,
+          "h": 48
+        },
+        {
+          "label": "Close",
+          "to": "13",
+          "x": 311,
+          "y": 501,
+          "w": 44,
+          "h": 44
+        }
+      ]
+    },
+    {
+      "id": "16",
+      "name": "Order",
+      "flow": "Order and bill",
+      "file": "16-order.png",
+      "hotspots": [
+        {
+          "label": "Lock order",
+          "to": "17",
+          "x": 16,
+          "y": 398,
+          "w": 358,
+          "h": 48
+        },
+        {
+          "label": "Costs tab",
+          "to": "18",
+          "x": 295,
+          "y": 780,
+          "w": 88,
+          "h": 64
+        },
+        {
+          "label": "Copy order as text",
+          "to": "16",
+          "x": 16,
+          "y": 334,
+          "w": 358,
+          "h": 48
+        }
+      ]
+    },
+    {
+      "id": "17",
+      "name": "Order locked",
+      "flow": "Order and bill",
+      "file": "17-order-locked.png",
+      "hotspots": [
+        {
+          "label": "Done",
+          "to": "18",
+          "x": 35,
+          "y": 772,
+          "w": 320,
+          "h": 48
+        }
+      ]
+    },
+    {
+      "id": "18",
+      "name": "Costs",
+      "flow": "Order and bill",
+      "file": "18-costs.png",
+      "hotspots": [
+        {
+          "label": "Finish round",
+          "to": "19",
+          "x": 16,
+          "y": 450,
+          "w": 358,
+          "h": 48
+        },
+        {
+          "label": "Order tab",
+          "to": "16",
+          "x": 199,
+          "y": 780,
+          "w": 88,
+          "h": 64
+        }
+      ]
+    },
+    {
+      "id": "19",
+      "name": "Finish round",
+      "flow": "Order and bill",
+      "file": "19-finish-round.png",
+      "hotspots": [
+        {
+          "label": "Keep",
+          "to": "18",
+          "x": 45,
+          "y": 456,
+          "w": 300,
+          "h": 48
+        },
+        {
+          "label": "Finish round",
+          "to": "20",
+          "x": 45,
+          "y": 520,
+          "w": 300,
+          "h": 48
+        }
+      ]
+    },
+    {
+      "id": "20",
+      "name": "History",
+      "flow": "Order and bill",
+      "file": "20-history.png",
+      "hotspots": [
+        {
+          "label": "Open app menu",
+          "to": "24",
+          "x": 330,
+          "y": 6,
+          "w": 44,
+          "h": 44
+        },
+        {
+          "label": "Menu tab",
+          "to": "09",
+          "x": 8,
+          "y": 780,
+          "w": 88,
+          "h": 64
+        }
+      ]
+    },
+    {
+      "id": "21",
+      "name": "Settings",
+      "flow": "More",
+      "file": "21-settings.png",
+      "hotspots": [
+        {
+          "label": "Open app menu",
+          "to": "24",
+          "x": 330,
+          "y": 6,
+          "w": 44,
+          "h": 44
+        },
+        {
+          "label": "Menu tab",
+          "to": "09",
+          "x": 8,
+          "y": 780,
+          "w": 88,
+          "h": 64
+        }
+      ]
+    },
+    {
+      "id": "22",
+      "name": "Pair without internet",
+      "flow": "More",
+      "file": "22-pair-without-internet.png",
+      "hotspots": [
+        {
+          "label": "Close",
+          "to": "04",
+          "x": 311,
+          "y": 118,
+          "w": 44,
+          "h": 44
+        }
+      ]
+    },
+    {
+      "id": "23",
+      "name": "Menu dark",
+      "flow": "More",
+      "file": "23-menu-dark.png",
+      "hotspots": [
+        {
+          "label": "My picks tab",
+          "to": "13",
+          "x": 104,
+          "y": 780,
+          "w": 88,
+          "h": 64
+        }
+      ]
+    },
+    {
+      "id": "24",
+      "name": "App menu",
+      "flow": "More",
+      "file": "24-app-menu.png",
+      "hotspots": [
+        {
+          "label": "Group",
+          "to": "04",
+          "x": 16,
+          "y": 65,
+          "w": 175,
+          "h": 48
+        },
+        {
+          "label": "History",
+          "to": "20",
+          "x": 199,
+          "y": 65,
+          "w": 175,
+          "h": 48
+        },
+        {
+          "label": "Settings",
+          "to": "21",
+          "x": 16,
+          "y": 121,
+          "w": 175,
+          "h": 96
+        },
+        {
+          "label": "Pair without internet",
+          "to": "22",
+          "x": 199,
+          "y": 121,
+          "w": 175,
+          "h": 96
+        }
+      ]
+    }
+  ]
+}
