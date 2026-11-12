@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { AppStore } from '../js/store.js';
-import { uid } from '../js/config.js';
+import { uid, PROTOCOL_VERSION } from '../js/config.js';
 
 async function host() {
   const app = new AppStore();
   app.db = { save: async () => {} };
   await app.create('Crew', 'Host', true);
+  await app.newMenu('Test menu');
   app.sent = [];
   app.network.send = (link, message) => { app.sent.push({ link, message }); return true; };
   return app;
@@ -14,7 +15,7 @@ async function host() {
 async function join(app, id = uid(), token = uid(), name = 'Guest') {
   const link = { id: uid(), mode: 'room', lastSeen: Date.now(), close() {} };
   app.network.links.set(link.id, link);
-  await app.receive(link, { type: 'hello', senderId: id, payload: { token, name } });
+  await app.receive(link, { type: 'hello', senderId: id, payload: { token, name, protocol: PROTOCOL_VERSION } });
   return { link, id, token };
 }
 test('host authenticates reconnect token and refuses identity spoofing', async () => {
@@ -30,9 +31,9 @@ test('host authenticates reconnect token and refuses identity spoofing', async (
   assert.equal(reconnected.link.memberId, guest.id);
   assert.equal(app.data.state.members.length, 2);
 });
-test('clashing names are auto-suffixed and new groups start with presets', async () => {
+test('clashing names are auto-suffixed without adding default items', async () => {
   const app = await host();
-  assert.equal(app.data.state.menu.length, 9);
+  assert.equal(app.data.state.menu.length, 0);
   const a = await join(app, uid(), uid(), 'Sunny Otter'), b = await join(app, uid(), uid(), 'sunny otter');
   assert.ok(a.link.memberId && b.link.memberId);
   assert.deepEqual(app.data.state.members.map(m => m.name).slice(1), ['Sunny Otter', 'sunny otter 2']);
@@ -67,7 +68,7 @@ test('member queues offline edits, survives snapshot, reconciles and ignores old
   await restored.receive(hostLink, response);
   assert.equal(restored.data.outbox.length, 0); assert.equal(restored.ui.hostOnline, true);
   const version = restored.data.state.group.version;
-  await restored.receive(hostLink, { ...response, payload: { state: { ...saved.state, group: { ...saved.state.group, version: version - 1 } } } });
+  await restored.receive(hostLink, { ...response, payload: { protocol: PROTOCOL_VERSION, state: { ...saved.state, group: { ...saved.state.group, version: version - 1 } } } });
   assert.equal(restored.data.state.group.version, version);
 });
 test('host persists before acknowledging a change', async () => {
@@ -91,6 +92,15 @@ test('host rolls back unsaved changes rather than acknowledging them as accepted
   const version = app.data.state.group.version;
   app.db.save = async () => { throw new Error('Storage full'); };
   await app.receive(guest.link, { type: 'intent', payload: { id: uid(), type: 'menu.upsert', senderId: guest.id, payload: { id: 'chai', name: 'Chai', price: 0, category: 'Tea' } } });
-  assert.equal(app.data.state.group.version, version); assert.equal(app.data.state.menu.length, 9);
+  assert.equal(app.data.state.group.version, version); assert.equal(app.data.state.menu.length, 0);
   assert.match(app.sent.at(-1).message.payload.error, /Storage full/);
+});
+test('old clients cannot drop menu IDs when joining a multi-menu host', async () => {
+  const app = await host();
+  const link = { id: uid(), mode: 'room', close() {} };
+  app.network.links.set(link.id, link);
+  await app.receive(link, { type: 'hello', senderId: uid(), payload: { token: uid(), name: 'Old client' } });
+  assert.equal(app.data.state.members.length, 1);
+  assert.equal(app.sent.at(-1).message.type, 'rejected');
+  assert.match(app.sent.at(-1).message.payload.message, /Update Chaikadi/);
 });

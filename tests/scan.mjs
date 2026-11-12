@@ -17,7 +17,7 @@ try {
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   await page.goto(base);
   await page.getByText('Offline app ready', { exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Start a tea break →' }).click();
+  await page.getByRole('button', { name: 'Pair without internet', exact: true }).click();
   await page.getByRole('navigation').getByRole('button', { name: 'Menu', exact: true }).click();
 
   const photo = await page.evaluate(async () => {
@@ -37,6 +37,7 @@ try {
 
   async function scan() {
     const t = Date.now();
+    await page.getByRole('button', { name: 'Snap a menu', exact: true }).click();
     await page.locator('label.button', { hasText: 'Choose photo' }).locator('input').setInputFiles(file);
     await page.getByRole('heading', { name: /^Found \d+ items?$/ }).waitFor({ timeout: 120000 });
     const rows = await page.$$eval('.scan-list li', lis => lis.map(li => `${li.querySelector('.scan-name').value}=${li.querySelector('.scan-price').value}`));
@@ -49,9 +50,9 @@ try {
   }
   assert.ok(first.rows.length <= 9, 'too many false positives');
   await page.getByRole('button', { name: /^Add \d+ items? to menu$/ }).click();
-  await page.getByText(/Menu saved: \d+ added, \d+ prices updated/).waitFor();
-  await page.locator('.item-list li', { hasText: 'Masala Chai' }).getByText('₹20.00').waitFor();
-  await page.locator('.item-list li', { hasText: 'Veg Biryani' }).getByText('₹120.00').waitFor();
+  await page.getByText(/Saved to .+: \d+ added/).waitFor();
+  await page.locator('.item-list li', { hasText: 'Masala Chai' }).getByText('Rs 20', { exact: true }).waitFor();
+  await page.locator('.item-list li', { hasText: 'Veg Biryani' }).getByText('Rs 120', { exact: true }).waitFor();
 
   await context.setOffline(true);
   await page.reload();
@@ -59,7 +60,7 @@ try {
   const second = await scan();
   console.log(`offline scan ${second.ms} ms: ${second.rows.length} items`);
   assert.ok(second.rows.includes('Masala Chai=20'));
-  assert.ok(await page.getByText('Already on menu — price will update').first().isVisible());
+  assert.ok(await page.getByText('Already on this menu — price will update').first().isVisible());
   assert.deepEqual(errors, []);
   assert.deepEqual(external, [], 'scanner must not call any third-party server');
   console.log(`${process.env.BROWSER || 'chromium'}: menu scan (OCR) online + offline passed.`);

@@ -4,6 +4,10 @@ Record device models, OS/browser versions, deployment URL, date, and results.
 The laptop can serve as the host and use DevTools. Repeat the lifecycle tests
 with the **iPhone as host**, since its background suspension is important.
 
+Navigation in v0.2: bottom tabs are **Menu / My picks / Order / Costs**. Use the
+app-bar menu for **Group / History / Settings / Pair without internet**; the
+compact room code also opens Group. New groups have no menus or items.
+
 ## Preparation
 
 - Deploy the complete directory at `https://chaikadi.fyi` with HTTPS enabled.
@@ -23,13 +27,15 @@ with the **iPhone as host**, since its background suspension is important.
 
 1. Laptop: create `4 PM crew`, name `Anu`. Verify a four-character code that
    contains no `0/O/1/I/L`, invite link and QR, host badge and orderer badge.
-2. iPhone: Join → type code → name `Bala`. Both devices show two online members.
-3. Android: open copied link / scan room QR → name `Chitra`. All see three people.
+2. iPhone: Join with a code → set name `Bala` → complete the code. Joining starts
+   automatically; both devices show two online members.
+3. Android: open copied link / scan room QR. It auto-joins with a generated name;
+   change it to `Chitra` in Settings. All see three people.
 4. Verify the app does not show/need an account, email, password or local hotspot.
 5. Test a malformed code, then a valid-format unused code. Expect actionable
    invalid/unreachable messages, retry behavior and manual pairing option.
-6. In a separate temporary laptop profile, try joining as `bala`. Expect a name
-   conflict. Change to `Dev`, retry, and confirm successful join. Remove Dev.
+6. In a separate temporary laptop profile, join as `bala`. Expect `bala 2`, with
+   no rejected join. Rename to `Dev` in Settings, then remove Dev from Group.
 7. On a throwaway group, open the same host's saved group in a duplicate tab.
    Expect a room-ID collision message, not two authoritative live hosts. Close
    the duplicate immediately. For deterministic new-room collision testing,
@@ -38,8 +44,9 @@ with the **iPhone as host**, since its background suspension is important.
 
 ## 2. Shared menu, picks and permissions
 
-1. Laptop: tap **Add tea-break presets**. Verify exactly nine named presets,
-   prices ₹0, and editable categories. Tap again; no duplicate preset names.
+1. Laptop: verify the Menu starts empty. Tap **Add common tea-break items**.
+   A named Tea break menu is created with nine items at Rs 0. Enter **Edit items**
+   to expose Edit/Delete controls. Another new menu must start empty.
 2. iPhone: edit Chai to ₹10. Android: edit Samosa to ₹20. All devices converge.
 3. Add a custom item in Other, edit it and delete it from a different device.
    Pick it before deletion; verify deletion removes those current picks too.
@@ -48,15 +55,15 @@ with the **iPhone as host**, since its background suspension is important.
    breakdown on all devices and after a refresh.
 6. Test +/−, quantity 0 removing a pick, max 99, invalid negative/decimal prices,
    and long names/notes. No negative quantity or invalid price is stored.
-7. Use **Surprise me**, re-roll and accept. Only that member gains quantity 1;
+7. Use **Can’t decide?**, Roll again and accept in the sheet. Only that member gains quantity 1;
    other members' picks never change. Restore picks to the ₹10/₹20 fixture.
-8. Group → host makes Bala orderer. Only Bala sees **Lock & place order**.
+8. Group → host makes Bala orderer. Only Bala sees **Lock order**.
    Non-hosts cannot remove members or reassign the orderer.
 
 ## 2b. Menu scanning
 
 1. Online, open Menu once on each phone (downloads the reader, ~7 MB).
-2. iPhone: **Take photo** → opens the rear camera → snap a real printed menu
+2. iPhone: **Snap a menu → Take photo** → opens the rear camera → snap a real printed menu
    (tea shop board, laminated card). Review list appears in a few seconds.
    Verify names/prices, untick wrong rows, fix one price, change one category.
    **Add N items** → items appear on all devices.
@@ -133,10 +140,10 @@ Use Anu = ₹10 in picks; Bala = ₹20; Chitra = no picks. Bala is orderer.
 Use all three devices on **one Wi-Fi LAN with its WAN disconnected**. Disable
 cellular data on both phones, but leave Wi-Fi on. Precache before this test.
 
-1. Start a fresh local-only group on laptop with **Create offline · pair manually**.
-2. Host → Add person manually → Create offer. Wait until gathering completes;
+1. Start a fresh local-only group on laptop with **Pair without internet** on Home.
+2. Host → Pair without internet → Create offer. Wait until gathering completes;
    do not accept partial candidates. Offer appears as QR and copyable text.
-3. iPhone → Join, enter name → No internet? Pair manually → allow camera, scan
+3. iPhone → Join with a code → Pair without internet → allow camera, scan
    offer → Create answer. Hold iPhone answer QR up to laptop camera; host scans
    and connects. If no laptop camera, use copy/paste text instead.
 4. Both show Connected and online member. Close panels and edit menu/picks on
@@ -178,6 +185,34 @@ cellular data on both phones, but leave Wi-Fi on. Precache before this test.
    keyboard focus, dark mode and reduced-motion preference.
 
 ## Evidence / release record
+
+### v0.2 design and multiple menus
+
+- Confirm the app is monochrome in light and dark modes: no coloured status,
+  emoji, rounded controls, shadows, background textures or eyebrow labels.
+- Room plate has double inset rules and four typed underlines. Tap to copy;
+  Show QR is optional. Every status includes a symbol/word, not colour alone.
+- Create two named menus, with the same item name but different prices. Editing
+  one must not change the other. The first is selected automatically; changing
+  the round menu requires host/orderer permission and confirms before clearing
+  picks. Keep cancels. Inactive menus may still be edited during a locked round.
+- Reopen a group saved with the previous single-menu version. Items, IDs, picks,
+  prices, currency, credentials and history survive in a menu named Menu.
+- Edit/note/scan/shuffle sheets: test Escape, keyboard focus containment, close
+  button, scrim tap and downward handle swipe. Focus returns to the opener.
+- Paste a full room code into the first of four boxes. Test uppercase conversion,
+  auto-advance, arrow keys and deleting a middle box without shifting its neighbours.
+- Quantity buttons are outlined, notes open from the item name, selected rows
+  have both tint and an ink left edge. Order breakdown starts collapsed.
+- Lock animation plays once for the orderer. Reduced motion shows the full text
+  without a cursor and settles shuffle after 300ms.
+- Settings theme override survives reload and offline launch. Auto follows
+  system appearance. Check theme-colour metadata and the new tumbler icons.
+- Check 320px width and 200% system text size: no horizontal page overflow,
+  hidden actions, or non-wrapping name columns. Use VoiceOver/TalkBack for code
+  boxes, quantities, toast messages and four labeled navigation tabs.
+- Fonts load from this origin only, also offline; Malayalam names and optional
+  ₹ use the local fallback. This build does not claim translated Malayalam UI.
 
 - Record pass/fail for each section and keep screenshots of the room, locked
   order, exact bill split and offline-relaunch state.

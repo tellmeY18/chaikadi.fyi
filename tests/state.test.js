@@ -5,7 +5,7 @@ import { validCode, roomCode, validateConfig, DEFAULT_CONFIG } from '../js/confi
 import { encodePairing, decodePairing, compatibilityPairing } from '../js/p2p.js';
 
 let n = 0;
-const initial = () => newGroup({ id: 'group', code: 'ABCD', name: 'Tea crew', memberId: 'host', memberName: 'Anu', roundId: 'round1' });
+const initial = () => action(newGroup({ id: 'group', code: 'ABCD', name: 'Tea crew', memberId: 'host', memberName: 'Anu', roundId: 'round1' }), 'menu.create', { id: 'test-menu', name: 'Test menu' });
 const action = (s, type, payload = {}, senderId = 'host', extra = {}) => reduce(s, {
   id: `action-${++n}`, type, payload, senderId, roundId: s.round.id, ...extra,
 });
@@ -62,7 +62,7 @@ test('invalid prices, quantities, notes and categories are rejected', () => {
   const s = populated();
   for (const price of [-1, 0.1, NaN, Infinity, 100000001]) assert.throws(() => action(s, 'menu.upsert', { id: 'x', name: 'X', price, category: 'Tea' }));
   for (const qty of [-1, 1.5, 100]) assert.throws(() => action(s, 'pick.set', { itemId: 'item0', qty, note: '' }));
-  assert.throws(() => action(s, 'pick.set', { itemId: 'gone', qty: 1, note: '' }), /removed/);
+  assert.throws(() => action(s, 'pick.set', { itemId: 'gone', qty: 1, note: '' }), /menu any more/);
   assert.throws(() => action(s, 'pick.set', { itemId: 'item0', qty: 1, note: 'x'.repeat(161) }), /160/);
 });
 test('equal difference and proportional difference have the intended meaning', () => {
@@ -104,7 +104,7 @@ test('finish archives immutable snapshots and stale round intents are rejected',
 test('debt tallies use archived orderer and currency and allow later settlement', () => {
   let s = billed(populated(), 3600, 'equal');
   s = action(s, 'round.finish', { date: '2026-11-12T12:00:00Z', nextRoundId: 'round2' });
-  assert.deepEqual(debts(s), [{ name: 'Bala', orderer: 'Anu', currency: '₹', amount: 2300 }]);
+  assert.deepEqual(debts(s), [{ name: 'Bala', orderer: 'Anu', currency: 'Rs', amount: 2300 }]);
   s = action(s, 'orderer.set', { id: 'guest' });
   assert.throws(() => action(s, 'history.payment', { roundId: 'round1', id: 'guest', paid: true }, 'guest'), /round’s orderer/);
   s = action(s, 'history.payment', { roundId: 'round1', id: 'guest', paid: true });

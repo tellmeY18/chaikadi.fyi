@@ -15,12 +15,27 @@ export function newGroup({ id, code, name, memberId, memberName, roundId }) {
   return {
     schema: 1,
     group: { id, roomCode: code, name: text(name, 60, 'Group name'), version: 1, hostId: memberId,
-      ordererId: memberId, status: 'open', currency: '₹' },
+      ordererId: memberId, status: 'open', currency: 'Rs' },
     members: [{ id: memberId, name: text(memberName, 30, 'Display name'), online: true }],
-    menu: [], picks: [], history: [], receipts: [],
+    menus: [], activeMenuId: null, menu: [], picks: [], history: [], receipts: [],
     round: { id: roundId, actualTotal: null, splitMode: 'equal', payments: {} },
   };
 }
+
+// Groups saved before multiple menus existed: their items become one menu
+// called "Menu". Deterministic, so host and members migrate identically.
+// Additive storage migration. Older clients must update for multi-menu edits.
+export function migrate(state) {
+  if (!state || Array.isArray(state.menus) || !Array.isArray(state.menu)) return state;
+  const s = clone(state);
+  s.menus = s.menu.length ? [{ id: 'menu-1', name: 'Menu' }] : [];
+  s.activeMenuId = s.menus[0]?.id || null;
+  for (const item of s.menu) item.menuId = item.menuId || 'menu-1';
+  return s;
+}
+
+export const activeItems = state => state.menu.filter(i => i.menuId === state.activeMenuId);
+export const activeMenu = state => state.menus.find(m => m.id === state.activeMenuId) || null;
 
 export function subtotal(state, memberId) {
   return state.picks.filter(p => p.memberId === memberId).reduce((sum, p) =>
@@ -75,7 +90,7 @@ export function reduce(state, intent) {
   if (state.receipts.includes(intent.id)) return state;
   const { type, payload: p = {}, senderId } = intent;
   assert(p && typeof p === 'object', 'Invalid change details.');
-  const s = clone(state);
+  const s = migrate(clone(state));
   const host = senderId === s.group.hostId;
   const member = s.members.find(m => m.id === senderId);
   const orderer = senderId === s.group.ordererId;
@@ -83,7 +98,7 @@ export function reduce(state, intent) {
   const open = () => assert(s.group.status === 'open', 'The order is locked. Ask the orderer to unlock it.');
   const ordererOnly = () => assert(orderer, 'Only the designated orderer can do that.');
   const hostOnly = () => assert(host, 'Only the host can do that.');
-  if (['pick.set', 'order.lock', 'order.unlock', 'bill.set', 'payment.set', 'round.finish'].includes(type)) {
+  if (['pick.set', 'menu.activate', 'order.lock', 'order.unlock', 'bill.set', 'payment.set', 'round.finish'].includes(type)) {
     assert(intent.roundId === s.round.id, 'That round has finished. Your old change was not applied.');
   }
   switch (type) {
@@ -120,24 +135,68 @@ export function reduce(state, intent) {
       assert(s.members.some(m => m.id === p.id), 'Unknown orderer.');
       s.group.ordererId = p.id;
       break;
-    case 'menu.upsert': {
+    case 'menu.create': {
+      assert(idString(p.id) && !s.menus.some(m => m.id === p.id), 'Invalid menu.');
+      assert(s.menus.length < 20, 'A group can keep up to 20 menus.');
+      const name = text(p.name, 60, 'Menu name');
+      assert(!s.menus.some(m => sameName(m.name, name)), 'A menu with that name already exists.');
+      s.menus.push({ id: p.id, name });
+      // The first menu becomes the round's menu automatically: no extra tap.
+      if (!s.activeMenuId) s.activeMenuId = p.id;
+      break;
+    }
+    case 'menu.rename': {
+      assert(s.menus.some(m => m.id === p.id), 'That menu was removed.');
+      const name = text(p.name, 60, 'Menu name');
+      assert(!s.menus.some(m => m.id !== p.id && sameName(m.name, name)), 'A menu with that name already exists.');
+      s.menus.find(m => m.id === p.id).name = name;
+      break;
+    }
+    case 'menu.remove': {
+      assert(s.menus.some(m => m.id === p.id), 'That menu was removed.');
+      if (p.id === s.activeMenuId) {
+        assert(orderer || host, 'Only the orderer or host can remove this round’s menu.');
+        open();
+      }
+      const gone = new Set(s.menu.filter(i => i.menuId === p.id).map(i => i.id));
+      s.menus = s.menus.filter(m => m.id !== p.id);
+      s.menu = s.menu.filter(i => !gone.has(i.id));
+      s.picks = s.picks.filter(pick => !gone.has(pick.itemId));
+      if (s.activeMenuId === p.id) s.activeMenuId = s.menus[0]?.id || null;
+      break;
+    }
+    case 'menu.activate': {
+      // Picking where to order from is the orderer's (or host's) call.
+      assert(orderer || host, 'Only the orderer or host can choose the menu for this round.');
       open();
+      assert(s.menus.some(m => m.id === p.id), 'That menu was removed.');
+      s.activeMenuId = p.id;
+      const active = new Set(s.menu.filter(i => i.menuId === p.id).map(i => i.id));
+      s.picks = s.picks.filter(pick => active.has(pick.itemId));
+      break;
+    }
+    case 'menu.upsert': {
       assert(idString(p.id) && money(p.price) && CATEGORIES.includes(p.category), 'Enter a valid item, price and category.');
-      const item = { id: p.id, name: text(p.name, 60, 'Item name'), price: p.price, category: p.category };
       const index = s.menu.findIndex(i => i.id === p.id);
-      assert(index >= 0 || s.menu.length < 200, 'A menu can contain up to 200 items.');
+      // Old clients omit menuId: keep the item's menu, else use the active one.
+      const menuId = p.menuId || s.menu[index]?.menuId || s.activeMenuId;
+      assert(s.menus.some(m => m.id === menuId), 'Create a menu first.');
+      assert(index < 0 || s.menu[index].menuId === menuId, 'Items cannot be moved between menus. Add a new item instead.');
+      if (menuId === s.activeMenuId || s.menu[index]?.menuId === s.activeMenuId) open();
+      const item = { id: p.id, name: text(p.name, 60, 'Item name'), price: p.price, category: p.category, menuId };
+      assert(index >= 0 || s.menu.filter(i => i.menuId === menuId).length < 200, 'A menu can contain up to 200 items.');
       if (index >= 0) s.menu[index] = item;
       else s.menu.push(item);
       break;
     }
     case 'menu.delete':
-      open();
+      if (s.menu.find(i => i.id === p.id)?.menuId === s.activeMenuId) open();
       s.menu = s.menu.filter(i => i.id !== p.id);
       s.picks = s.picks.filter(pick => pick.itemId !== p.id);
       break;
     case 'pick.set': {
       open();
-      assert(s.menu.some(i => i.id === p.itemId), 'That menu item was removed.');
+      assert(s.menu.some(i => i.id === p.itemId && i.menuId === s.activeMenuId), 'That item isn’t on this round’s menu any more.');
       assert(Number.isInteger(p.qty) && p.qty >= 0 && p.qty <= 99, 'Quantity must be 0–99.');
       assert(typeof p.note === 'string' && p.note.length <= 160, 'Notes can be up to 160 characters.');
       s.picks = s.picks.filter(pick => !(pick.memberId === senderId && pick.itemId === p.itemId));
@@ -167,7 +226,7 @@ export function reduce(state, intent) {
       assert(s.group.status === 'locked', 'Lock the order before finishing the round.');
       assert(idString(p.nextRoundId) && p.nextRoundId !== s.round.id && typeof p.date === 'string' && Number.isFinite(Date.parse(p.date)), 'Invalid round.');
       const totals = costs(s);
-      s.history.push({ ...clone(s.round), date: p.date, picks: clone(s.picks), menu: clone(s.menu),
+      s.history.push({ ...clone(s.round), date: p.date, picks: clone(s.picks), menu: clone(activeItems(s)), menuName: activeMenu(s)?.name || '',
         members: clone(s.members), currency: s.group.currency, ordererId: s.group.ordererId,
         estimatedTotal: totals.estimatedTotal, amounts: totals.people.map(m => ({ id: m.id, name: m.name, owed: m.owed })) });
       s.picks = []; s.group.status = 'open';

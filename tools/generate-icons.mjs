@@ -18,20 +18,21 @@ function chunk(type, data) {
   return Buffer.concat([length, body, checksum]);
 }
 function pixel(x, y, maskable) {
-  if (maskable) { x = (x - 256) / .78 + 256; y = (y - 256) / .78 + 256; }
-  const bg = [53, 100, 75], cream = [247, 245, 239], tea = [182, 129, 65];
-  if (y >= 401 && y <= 421 && x >= 119 && x <= 387) return cream;
-  if (((x - 374) / 46) ** 2 + ((y - 260) / 49) ** 2 <= 1 &&
-      ((x - 374) / 23) ** 2 + ((y - 260) / 27) ** 2 >= 1 && x >= 335) return cream;
-  if (x >= 139 && x <= 352 && y >= 211 && y <= 281) {
-    if (((x - 246) / 85) ** 2 + ((y - 218) / 15) ** 2 <= 1) return tea;
-    return cream;
+  x /= 8; y /= 8;
+  if (maskable) { x = (x - 32) / .8 + 32; y = (y - 32) / .8 + 32; }
+  const ink = [17, 17, 17], paper = [255, 255, 255];
+  // The same tapered tumbler and two steam strokes as icon.svg.
+  if (y >= 29 && y <= 53.5) {
+    const inset = (y - 29) * .155;
+    if (x >= 19 + inset && x <= 45 - inset) {
+      if (y >= 36 && y <= 42) return ink;
+      return paper;
+    }
   }
-  if (y > 281 && ((x - 245.5) / 106.5) ** 2 + ((y - 281) / 102) ** 2 <= 1) return cream;
-  if (y >= 87 && y <= 160) for (const sx of [190, 253, 316]) {
-    if (Math.abs(x - (sx + Math.sin((y - 87) / 73 * Math.PI * 2) * 9)) < 7.5) return cream;
+  for (const [sx, top] of [[26, 17], [34, 15]]) {
+    if (y >= top && y <= top + 8 && Math.abs(x - (sx - Math.sin((y - top) / 8 * Math.PI * 2) * 1.1)) <= 1.3) return paper;
   }
-  return bg;
+  return ink;
 }
 function png(size, maskable = false) {
   const raw = Buffer.alloc((size * 3 + 1) * size);

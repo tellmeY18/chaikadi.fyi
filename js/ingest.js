@@ -102,6 +102,18 @@ export function cleanOcrLines(lines) {
   }).join('\n');
 }
 
+// First heading-like line near the top (no price, mostly letters):
+// "RAJU CHAI KADA" -> "Raju Chai Kada". Used to name a new menu.
+export function findTitle(text) {
+  const lines = String(text || '').split(/\r?\n/).map(l => cleanName(l.replace(/\s+/g, ' ').trim())).filter(Boolean);
+  for (const line of lines.slice(0, 4)) {
+    if (/\d/.test(line) || !plausibleName(line) || line.length < 3) continue;
+    if (/^(menu|our menu|price list|rate list|welcome)$/i.test(line)) continue;
+    return titleCase(line).slice(0, 50);
+  }
+  return '';
+}
+
 export function dedupe(items) {
   const seen = new Map();
   for (const item of items) {
@@ -129,7 +141,7 @@ async function prepareImage(file) {
 // ---- Engine 1: Chrome built-in AI (optional) ----
 const SCHEMA = {
   type: 'object',
-  properties: { items: { type: 'array', maxItems: 100, items: { type: 'object',
+  properties: { shop: { type: 'string' }, items: { type: 'array', maxItems: 100, items: { type: 'object',
     properties: { name: { type: 'string' }, price: { type: 'number' }, category: { type: 'string', enum: ['Tea', 'Snacks', 'Meal', 'Other'] } },
     required: ['name', 'price', 'category'] } } },
   required: ['items'],
@@ -149,13 +161,14 @@ async function extractWithBuiltIn(canvas) {
   });
   try {
     const raw = await session.prompt([{ role: 'user', content: [
-      { type: 'text', value: 'This is a photo of a cafe / tea-shop / restaurant menu. List every orderable item with its price as a number (first price if several). Category: Tea for any drink, Snacks for small bites, Meal for full dishes, else Other. Skip headings, phone numbers and taxes.' },
+      { type: 'text', value: 'This is a photo of a cafe / tea-shop / restaurant menu. Give the shop or menu name if printed (else empty), and list every orderable item with its price as a number (first price if several). Category: Tea for any drink, Snacks for small bites, Meal for full dishes, else Other. Skip headings, phone numbers and taxes.' },
       { type: 'image', value: canvas },
     ] }], { responseConstraint: SCHEMA });
     const parsed = JSON.parse(raw);
-    return dedupe((parsed.items || [])
+    const title = typeof parsed.shop === 'string' ? cleanName(parsed.shop).slice(0, 50) : '';
+    return { title, items: dedupe((parsed.items || [])
       .map(i => ({ name: cleanName(String(i.name || '')), price: Math.round(Number(i.price) * 100), category: ['Tea', 'Snacks', 'Meal', 'Other'].includes(i.category) ? i.category : guessCategory(String(i.name)) }))
-      .filter(i => plausibleName(i.name) && Number.isSafeInteger(i.price) && i.price >= 0 && i.price <= 10000000));
+      .filter(i => plausibleName(i.name) && Number.isSafeInteger(i.price) && i.price >= 0 && i.price <= 10000000)) };
   } finally { session.destroy?.(); }
 }
 
@@ -192,7 +205,7 @@ async function extractWithOCR(canvas, onProgress) {
     const { data } = await worker.recognize(canvas, {}, { text: true, blocks: true });
     const lines = (data.blocks || []).flatMap(b => b.paragraphs.flatMap(p => p.lines));
     const cleaned = lines.length ? cleanOcrLines(lines) : data.text;
-    return { text: data.text, items: parseMenuText(cleaned) };
+    return { text: data.text, title: findTitle(cleaned), items: parseMenuText(cleaned) };
   } finally { await worker.terminate(); }
 }
 
@@ -203,8 +216,8 @@ export async function extractMenu(file, { onProgress, preferBuiltIn = true } = {
   if (preferBuiltIn && await builtInAvailable()) {
     try {
       onProgress?.(0.2, 'Reading the menu on-device (built-in AI)…');
-      const items = await extractWithBuiltIn(canvas);
-      if (items.length) { onProgress?.(1, 'Done'); return { engine: 'built-in', items, text: '' }; }
+      const { title, items } = await extractWithBuiltIn(canvas);
+      if (items.length) { onProgress?.(1, 'Done'); return { engine: 'built-in', title, items, text: '' }; }
     } catch { /* fall through to OCR */ }
   }
   const result = await extractWithOCR(canvas, onProgress).catch(error => {

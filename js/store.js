@@ -1,5 +1,5 @@
-import { DEFAULT_CONFIG, PRESETS, uid, roomCode, validCode, validateConfig, funName } from './config.js';
-import { newGroup, reduce, Persistence } from './state.js';
+import { DEFAULT_CONFIG, PRESETS, PROTOCOL_VERSION, uid, roomCode, validCode, validateConfig, funName } from './config.js';
+import { newGroup, reduce, Persistence, migrate } from './state.js';
 import { Network, PUBLIC_INTENTS, encodePairing, decodePairing, compatibilityPairing } from './p2p.js';
 
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -9,7 +9,7 @@ export class AppStore {
   constructor() {
     this.listeners = new Set(); this.queue = Promise.resolve();
     this.data = { identity: { id: uid(), token: uid(), name: '' }, config: copy(DEFAULT_CONFIG),
-      state: null, role: null, targetCode: '', outbox: [], credentials: {}, revoked: [] };
+      state: null, role: null, targetCode: '', outbox: [], credentials: {}, revoked: [], preferences: { theme: 'auto', installDismissed: false } };
     this.ui = { tab: 'lobby', status: 'Ready', notice: '', storageWarning: '', manualHint: false,
       hostOnline: false, pairing: null, suggested: null, shuffling: false, ready: false, blocked: false };
     this.db = new Persistence(message => { this.ui.storageWarning = message; this.emit(); });
@@ -30,20 +30,29 @@ export class AppStore {
     }
     return { ...this.ui, state, identity: this.data.identity, role: this.data.role,
       config: this.data.config, pending: this.data.outbox.length, targetCode: this.data.targetCode,
-      roomReady: this.network.roomReady };
+      roomReady: this.network.roomReady, preferences: this.data.preferences || { theme: 'auto', installDismissed: false } };
   }
   serial(fn) {
     const result = this.queue.catch(() => {}).then(fn);
-    this.queue = result.catch(error => this.notice(error.message));
+    this.queue = result.catch(error => { this.notice(error.message); return false; });
     return this.queue;
   }
   notice(message) { this.ui.notice = message; this.emit(); }
+  toast(message) {
+    clearTimeout(this.toastTimer); this.ui.toast = message; this.emit();
+    this.toastTimer = setTimeout(() => { this.ui.toast = ''; this.emit(); }, 3000);
+  }
+  async preferences(patch) {
+    this.data.preferences = { theme: 'auto', installDismissed: false, ...this.data.preferences, ...patch };
+    await this.persist(); this.emit();
+  }
   async persist() { await this.db.save(this.data); }
   async boot(code = '') {
     await this.db.open();
     const saved = await this.db.load();
     if (saved?.identity && saved.config && (!saved.state || saved.state.schema === 1)) this.data = saved;
     if (!this.data.identity.name) this.data.identity.name = funName();
+    this.data.state = migrate(this.data.state);
     this.ui.blocked = !!this.data.removed;
     if (this.ui.blocked) this.ui.notice = 'You were removed from this group. Your saved history is available; leave in Settings to start again.';
     if (!this.data.state && validCode(code)) this.data.targetCode = code;
@@ -87,7 +96,6 @@ export class AppStore {
     this.data.credentials[id] = this.data.identity.token;
     this.ui.hostOnline = true; this.ui.tab = 'lobby'; this.freshRoom = true; this.collisions = 0;
     await this.persist(); this.emit();
-    await this.presets(); // start with a ready menu; everything stays editable
     if (!manualOnly) this.startRoom();
     else this.ui.status = 'Local host ready. Add a person to pair on the same Wi-Fi.';
     this.emit();
@@ -131,6 +139,7 @@ export class AppStore {
         if (this.data.outbox.length >= 500) throw new Error('500 offline changes are waiting. Reconnect before making more changes.');
         this.data.outbox.push(intent); await this.persist(); this.emit(); this.flush();
       }
+      return true;
     });
   }
   changePick(itemId, delta) {
@@ -172,7 +181,7 @@ export class AppStore {
   }
   sendState(link, ack = null, error = null) {
     this.network.send(link, { type: 'state', senderId: this.data.identity.id, version: this.data.state.group.version,
-      payload: { state: this.data.state, ack, error } });
+      payload: { state: this.data.state, ack, error, protocol: PROTOCOL_VERSION } });
   }
   broadcast() {
     if (this.data.role !== 'host' || !this.data.state) return;
@@ -180,7 +189,7 @@ export class AppStore {
   }
   hello(link) {
     this.network.send(link, { type: 'hello', senderId: this.data.identity.id, version: this.data.state?.group.version || 0,
-      payload: { name: this.data.identity.name, token: this.data.identity.token, groupId: this.data.state?.group.id || null } });
+      payload: { name: this.data.identity.name, token: this.data.identity.token, groupId: this.data.state?.group.id || null, protocol: PROTOCOL_VERSION } });
   }
   async linkChanged(link, online) {
     if (online) {
@@ -204,6 +213,7 @@ export class AppStore {
       if (msg.type === 'hello') {
         const beforeHello = copy(this.data);
         try {
+          if (msg.payload?.protocol !== PROTOCOL_VERSION) throw new Error('Update Chaikadi on both devices: close all app windows, reopen online, then join again. Your saved group is kept.');
           const { token, name, groupId } = msg.payload || {};
           const id = msg.senderId;
           if (typeof id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(id) || id === this.data.identity.id ||
@@ -257,7 +267,12 @@ export class AppStore {
         this.notice(msg.payload?.message || 'The host could not accept this connection.'); return;
       }
       if (msg.type !== 'state') return;
-      const incoming = msg.payload?.state;
+      if (msg.payload?.protocol !== PROTOCOL_VERSION) {
+        this.network.stop(); this.ui.hostOnline = false;
+        this.notice('The host needs the current Chaikadi version. Close all app windows on both devices and reopen online, then join again. Your saved group is kept.');
+        return;
+      }
+      const incoming = migrate(msg.payload?.state);
       if (incoming?.schema !== 1 || !incoming.group || incoming.group.hostId !== msg.senderId ||
           !Number.isSafeInteger(incoming.group.version) || !Array.isArray(incoming.members) || !Array.isArray(incoming.menu) ||
           !Array.isArray(incoming.picks) || !Array.isArray(incoming.history) || !Array.isArray(incoming.receipts) || !incoming.round ||
@@ -302,34 +317,56 @@ export class AppStore {
       if (this.data.role === 'member') this.network.send(link, { type: 'sync', payload: {}, senderId: this.data.identity.id, version: this.data.state?.group.version || 0 });
     }
   }
-  // Scanned/imported items: same-name items are updated in place (keeps their
-  // id, so existing picks survive); others are added. One intent per item.
-  async importMenu(items) {
+  uniqueMenuName(base) {
+    const taken = new Set(this.view().state.menus.map(m => m.name.normalize('NFKC').toLowerCase()));
+    let name = (base || 'Menu').trim().slice(0, 55) || 'Menu';
+    for (let n = 2; taken.has(name.normalize('NFKC').toLowerCase()); n++) name = `${(base || 'Menu').trim().slice(0, 55)} ${n}`;
+    return name;
+  }
+  async newMenu(name) {
+    const id = uid();
+    await this.dispatch('menu.create', { id, name: this.uniqueMenuName(name) });
+    return this.view().state.menus.some(m => m.id === id) ? id : null;
+  }
+  // Scanned/imported items go into `menuId` (a new menu named after the
+  // scanned heading when omitted). Same-name items in that menu are updated
+  // in place, keeping their id so existing picks survive.
+  async importMenu(items, { menuId, title, skipExisting = false } = {}) {
+    const auto = /^Menu( \d+)?$/;
+    let target = menuId && this.view().state.menus.find(m => m.id === menuId);
+    if (!target) target = { id: await this.newMenu(title || 'Menu') };
+    else if (title && auto.test(target.name) && !this.view().state.menu.some(i => i.menuId === target.id)) {
+      await this.dispatch('menu.rename', { id: target.id, name: this.uniqueMenuName(title) });
+    }
+    if (!target.id) return { added: 0, updated: 0, menuId: null };
     let added = 0, updated = 0;
     for (const item of items) {
-      const existing = this.view().state.menu.find(i => i.name.normalize('NFKC').toLowerCase() === item.name.trim().normalize('NFKC').toLowerCase());
-      await this.dispatch('menu.upsert', { id: existing?.id || uid(), name: item.name, price: item.price, category: item.category });
+      const existing = this.view().state.menu.find(i => i.menuId === target.id && i.name.normalize('NFKC').toLowerCase() === item.name.trim().normalize('NFKC').toLowerCase());
+      if (existing && skipExisting) continue;
+      const saved = await this.dispatch('menu.upsert', { id: existing?.id || uid(), menuId: target.id, name: item.name, price: item.price, category: item.category });
+      if (!saved) throw new Error('Some items could not be saved. Check the message above and try again.');
       existing ? updated++ : added++;
     }
-    return { added, updated };
+    return { added, updated, menuId: target.id };
   }
-  async presets() {
-    for (const [name, category] of PRESETS) {
-      if (!this.view().state.menu.some(i => i.name.toLowerCase() === name.toLowerCase())) {
-        await this.dispatch('menu.upsert', { id: uid(), name, category, price: 0 });
-      }
-    }
+  // Optional one-tap starter: the classic tea-break items at price 0.
+  presets(menuId) {
+    return this.importMenu(PRESETS.map(([name, category]) => ({ name, category, price: 0 })), { menuId, title: 'Tea break', skipExisting: true });
   }
-  suggest() {
-    const menu = this.view().state?.menu;
+  suggest(reducedMotion = false) {
+    const state = this.view().state;
+    const menu = state?.menu.filter(i => i.menuId === state.activeMenuId);
     if (!menu?.length) { this.notice('Add a few menu items first.'); return; }
     if (this.ui.shuffling) return;
-    this.ui.shuffling = true; let count = 0;
-    const timer = setInterval(() => {
+    this.ui.shuffling = true; this.emit(); let count = 0;
+    const delays = reducedMotion ? [300] : [50, 70, 90, 110, 150, 190, 240, 300];
+    const strike = () => {
       this.ui.suggested = menu[crypto.getRandomValues(new Uint32Array(1))[0] % menu.length].id;
-      if (++count >= 8) { clearInterval(timer); this.ui.shuffling = false; }
+      if (++count >= delays.length) this.ui.shuffling = false;
+      else setTimeout(strike, delays[count]);
       this.emit();
-    }, 75);
+    };
+    setTimeout(strike, delays[0]);
   }
   async settings(config) {
     this.data.config = validateConfig(config); await this.persist();

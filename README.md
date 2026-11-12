@@ -9,6 +9,12 @@ runtime CDN dependencies.
 Preact + htm, vendored locally; state, persistence and networking are plain ES
 modules independent of the UI framework.
 
+The visual source of truth is [DESIGN.md](DESIGN.md): monochrome, locally hosted
+Courier Prime, square controls and receipt-like rows. The four bottom tabs are
+Menu, My picks, Order and Costs. Group, History and Settings are in the app bar
+menu; the compact room code also opens Group. Theme follows the device, with
+persisted Light / Dark / Follow system overrides in Settings.
+
 ## Run locally
 
 With Nix:
@@ -52,6 +58,7 @@ node tests/browser.mjs                 # real local WebRTC + offline/PWA flow
 BROWSER=webkit node tests/browser.mjs  # WebKit equivalent
 node tests/room.mjs                    # real public signaling; needs internet
 node tests/scan.mjs                    # on-device menu OCR, online + offline
+node tests/design.mjs                  # multiple menus, themes, sheets, 200% text
 ```
 
 Set `TEST_URL` to override `http://127.0.0.1:8080`. `SCREENSHOT_PATH` overrides
@@ -121,31 +128,44 @@ users when a new worker is waiting. No forced reload or mid-order `skipWaiting`.
 
 ## How to use it
 
-1. **Create group** with a group name and your display name. You are the host and
-   initial orderer. Keep your app open.
-2. Others type the room code and their name, open your invite link, or scan the
-   invite QR. Names must be unique (case-insensitive) within the group.
-3. In **Menu**, tap **Take photo** to snap the shop's menu (or **Choose photo**).
+1. **Create a group** in one tap. Group and display names are prefilled and can
+   be edited or rerolled. You are the host and initial orderer. Keep your app open.
+2. Others enter the four-box room code, open your invite link, or scan its QR.
+   A completed valid code / link joins automatically. Name collisions receive
+   a number suffix; display names can be changed in Settings.
+3. New groups have **no default menu or items**. Create a named menu per shop,
+   add items, or use **Snap a menu → Take photo / Choose photo**.
    Items and prices are read on the phone; review/untick/edit, then **Add N
-   items**. Same-name items update their price. Or add items by hand. New
-   groups start with nine tea-break presets at ₹0. Everyone can edit while open.
-4. In **My picks**, use +/−, enter optional item notes and tap **Save note**.
-   **Surprise me / Re-roll** is a private suggestion, not a vote.
+   items**. The first menu becomes this round’s menu. Names/prices update only
+   within the selected menu. **Add common tea-break items** is optional and
+   never resets an existing price. Anyone can edit menus; the host or orderer
+   chooses **Use for this round**. Switching confirms before clearing picks.
+4. In **My picks**, use +/−; tap an item name for a note sheet and **Save note**.
+   **Can’t decide? / Roll again** opens a private suggestion sheet, not a vote.
 5. **Order** shows quantities, notes, per-person details and a copyable summary.
-   Only the assigned orderer can **Lock & place order** or unlock. This is a
+   Only the assigned orderer can **Lock order** or unlock. This is a
    bookkeeping action: place the order yourself by phone/chat/shop app.
 6. **Costs** shows subtotals to everyone. Once locked, the orderer enters the
    actual bill, chooses the difference split, and toggles Paid / Not paid.
 7. **Finish round** archives a full snapshot, clears current picks/bill/payments,
-   and retains the group, members and menu. History shows outstanding amounts
+   and retains the group, members and saved menus. History records the original
+   menu name and shows outstanding amounts
    across rounds and lets each round's orderer mark late payments.
 8. **Settings** changes your name, host-controlled currency label and connection
    settings. Export local JSON before leaving a group or clearing browser data.
 
+Saved single-menu groups migrate into one named **Menu**, preserving item IDs,
+picks, prices, currency and history. Nothing is silently deleted. Only the active
+round’s menu is frozen by locking; other saved menus remain editable. Refresh all
+devices onto the same app version before using multiple menus together.
+The handshake checks the multi-menu protocol version and asks older clients to
+update, preserving saved state rather than letting an old writer drop menu IDs.
+
 ### Bill arithmetic
 
-All prices and totals are **integer minor units** (paise for INR), displayed to
-two decimal places. Only members with at least one pick participate in a split.
+All prices and totals are **integer minor units** (paise for INR), displayed with
+Indian grouping and two decimal places when fractional. New groups use **Rs**;
+existing currency settings stay intact. Only members with picks share the bill.
 The orderer's own share is displayed but is not counted as debt to themselves.
 
 - Estimated subtotals ₹10 + ₹20, actual bill ₹36:
@@ -325,7 +345,7 @@ or shipped with this MVP.
   cannot reconnect as that revoked identity to the same group.
 - A member with an old saved group is not silently moved into a different group
   that happens to reuse its room code. Leave explicitly to join the new group.
-- Limits: 15 people, 200 menu items, quantity 0–99, 160-character notes, 500
+- Limits: 15 people, 20 saved menus with 200 items each, quantity 0–99, 160-character notes, 500
   pending offline changes per device, and a 2,000-intent deduplication window.
   Full peer snapshots are bounded to 4 MiB; very large multi-round histories
   require export and starting a fresh group. Data is never silently truncated.
@@ -360,7 +380,17 @@ chaikadi.fyi/
 ├── flake.lock                 pinned Nix inputs
 ├── package.json               ES-module mode and dependency-free test command
 ├── README.md
+├── DESIGN.md                  selected v0.2 brand and component rules
+├── LICENSE                    AGPL-3.0
+├── _headers                   Cloudflare cache / response headers
 ├── TEST_PLAN.md               laptop + iPhone + Android acceptance plan
+├── fonts/
+│   ├── courier-prime-400-latin.woff2
+│   ├── courier-prime-700-latin.woff2
+│   ├── noto-serif-malayalam.woff2
+│   ├── Courier-Prime.OFL.txt
+│   ├── Noto-Serif-Malayalam.OFL.txt
+│   └── README.md
 ├── icons/
 │   ├── icon.svg
 │   ├── icon-192.png
@@ -374,6 +404,8 @@ chaikadi.fyi/
 │   ├── p2p.js                 framework-free PeerJS/raw WebRTC transport
 │   ├── qr.js                  local generation and camera scan lifecycle
 │   ├── ingest.js              menu photo -> items (on-device AI / OCR + parser)
+│   ├── strings.js             English UI catalogue / Indian money formatting
+│   ├── components.js          local SVG icons, sheets and four-box code input
 │   ├── ui.js                  Preact + htm rendering; subscribes to store
 │   └── main.js                boot, PWA registration, foreground reconnect
 ├── vendor/
@@ -387,10 +419,14 @@ chaikadi.fyi/
 │   ├── peerjs.LICENSE
 │   ├── qrcode.LICENSE
 │   ├── jsQR.LICENSE
+│   ├── ocr/                   locally vendored WASM, worker and English model
 │   └── README.md              pinned versions and provenance
 ├── tests/
 │   ├── state.test.js          reducer, arithmetic, pairing codec, fallback
 │   ├── protocol.test.js       authority, identity, replay and offline sync
+│   ├── menus.test.js          multi-menu selection, migration and preservation
+│   ├── design.test.js         contrast, font budget and money formatting
+│   ├── design.mjs             theme, menu sheets and 200% text browser checks
 │   ├── browser.mjs            optional real-browser / manual-WebRTC smoke
 │   ├── room.mjs               optional public-cloud / room-reconnect smoke
 │   ├── scan.mjs               optional real-browser menu-scan test
@@ -408,11 +444,11 @@ provided to the reducer, keeping it deterministic and straightforward to test.
 
 ## Suggested next enhancements
 
-1. UI polish: richer menu cards, smoother input drafts, connection onboarding.
+1. Malayalam/Hindi/Tamil UI translations using the English string catalogue.
 2. Self-hosted PeerServer-compatible signaling (or a compatible worker adapter).
 3. Host migration with explicit authority epochs and conflict recovery.
 4. Per-member payment reminders with opt-in sharing.
-5. Shared favourites / reusable group menus.
+5. Shared favourites and importing/exporting menus across groups.
 6. Order from history with unavailable-item and price-change review.
 
 See [TEST_PLAN.md](TEST_PLAN.md) for the real-device acceptance checklist.
@@ -436,3 +472,6 @@ at your fork if you deploy modifications.
 The files in `vendor/` are third-party libraries under their own licenses
 (MIT and Apache-2.0, see `vendor/README.md` and the `*.LICENSE` files there).
 Both are compatible with AGPL-3.0 when combined in this work.
+
+Fonts in `fonts/` are separately licensed under SIL OFL 1.1. Their complete
+copyright and license notices are distributed alongside the local WOFF2 files.
