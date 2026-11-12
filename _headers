@@ -1,12 +1,5 @@
-/
-  Cache-Control: no-cache
-/sw.js
-  Cache-Control: no-cache
-/index.html
-  Cache-Control: no-cache
-/manifest.json
-  Cache-Control: no-cache
 /*
+  Cache-Control: public, no-cache, no-transform
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   Permissions-Policy: camera=(self), microphone=(), geolocation=()

@@ -103,6 +103,10 @@ still point at the production domain. Use the actual custom domain for group tes
 
 For all providers: serve `.js` as JavaScript, `.json` as JSON and `.png` as PNG.
 Avoid long-lived HTTP caching for `sw.js`; normal revalidation is appropriate.
+The included `_headers` uses `public, no-cache, no-transform`. Cloudflare honours
+`no-transform` by not injecting its automatic Web Analytics beacon. Keep Pages
+Web Analytics disabled as well. This preserves the app's no-tracking requirement
+even when the custom domain has automatic analytics enabled at the zone level.
 There are no path routes to rewrite: navigation is one page with `?room=ABCD`.
 Development files may be omitted from deployment; all files in `sw.js`'s `SHELL`
 must be present. Do not rename or remove a precached file without updating it.

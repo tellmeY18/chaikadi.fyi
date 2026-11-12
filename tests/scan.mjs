@@ -21,10 +21,14 @@ try {
   await page.getByRole('navigation').getByRole('button', { name: 'Menu', exact: true }).click();
 
   const photo = await page.evaluate(async () => {
+    // Fixed seed: a regression test must not generate a different OCR problem
+    // on every run. Physical-photo accuracy is checked in TEST_PLAN.md.
+    let seed = 0xc0ffee;
+    const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
     const c = document.createElement('canvas'); c.width = 1100; c.height = 900;
     const g = c.getContext('2d');
     g.fillStyle = '#f3ecd9'; g.fillRect(0, 0, c.width, c.height);
-    for (let i = 0; i < 9000; i++) { g.fillStyle = `rgba(80,60,30,${Math.random() * 0.12})`; g.fillRect(Math.random() * 1100, Math.random() * 900, 2, 2); }
+    for (let i = 0; i < 9000; i++) { g.fillStyle = `rgba(80,60,30,${random() * 0.12})`; g.fillRect(random() * 1100, random() * 900, 2, 2); }
     g.translate(550, 450); g.rotate(-0.025); g.translate(-550, -450);
     g.fillStyle = '#2a1d10'; g.font = 'bold 56px Georgia, serif'; g.fillText('RAJU CHAI KADA', 260, 100);
     g.font = '40px Arial, sans-serif';
@@ -49,10 +53,14 @@ try {
     assert.ok(first.rows.includes(expected), `missing ${expected}`);
   }
   assert.ok(first.rows.length <= 9, 'too many false positives');
+  // Review edits are authoritative even when the OCR was correct initially.
+  const gingerRow = page.locator('.scan-list li').filter({ has: page.getByRole('checkbox', { name: 'Include Ginger Tea', exact: true }) });
+  await gingerRow.locator('.scan-price').fill('15.50');
   await page.getByRole('button', { name: /^Add \d+ items? to menu$/ }).click();
   await page.getByText(/Saved to .+: \d+ added/).waitFor();
   await page.locator('.item-list li', { hasText: 'Masala Chai' }).getByText('Rs 20', { exact: true }).waitFor();
   await page.locator('.item-list li', { hasText: 'Veg Biryani' }).getByText('Rs 120', { exact: true }).waitFor();
+  await page.locator('.item-list li', { hasText: 'Ginger Tea' }).getByText('Rs 15.50', { exact: true }).waitFor();
 
   await context.setOffline(true);
   await page.reload();
