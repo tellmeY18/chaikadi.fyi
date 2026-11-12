@@ -1,0 +1,380 @@
+import { DEFAULT_CONFIG, PRESETS, uid, roomCode, validCode, validateConfig, funName } from './config.js';
+import { newGroup, reduce, Persistence } from './state.js';
+import { Network, PUBLIC_INTENTS, encodePairing, decodePairing, compatibilityPairing } from './p2p.js';
+
+const copy = value => JSON.parse(JSON.stringify(value));
+
+// Framework-agnostic application store. UI only subscribes and calls actions.
+export class AppStore {
+  constructor() {
+    this.listeners = new Set(); this.queue = Promise.resolve();
+    this.data = { identity: { id: uid(), token: uid(), name: '' }, config: copy(DEFAULT_CONFIG),
+      state: null, role: null, targetCode: '', outbox: [], credentials: {}, revoked: [] };
+    this.ui = { tab: 'lobby', status: 'Ready', notice: '', storageWarning: '', manualHint: false,
+      hostOnline: false, pairing: null, suggested: null, shuffling: false, ready: false, blocked: false };
+    this.db = new Persistence(message => { this.ui.storageWarning = message; this.emit(); });
+    this.network = new Network({
+      onMessage: (link, msg) => this.serial(() => this.receive(link, msg)),
+      onLink: (link, online) => this.serial(() => this.linkChanged(link, online)),
+      onStatus: message => { this.ui.status = message; if (this.network.roomReady) this.freshRoom = false; this.emit(); },
+      onManualRequired: () => { this.ui.manualHint = true; this.emit(); },
+      onCollision: () => this.serial(() => this.collision()),
+    });
+  }
+  subscribe(fn) { this.listeners.add(fn); fn(this.view()); return () => this.listeners.delete(fn); }
+  emit() { for (const fn of this.listeners) fn(this.view()); }
+  view() {
+    let state = this.data.state;
+    for (const intent of this.data.outbox) {
+      try { state = reduce(state, intent); } catch { /* conflicts are reported after full host sync */ }
+    }
+    return { ...this.ui, state, identity: this.data.identity, role: this.data.role,
+      config: this.data.config, pending: this.data.outbox.length, targetCode: this.data.targetCode,
+      roomReady: this.network.roomReady };
+  }
+  serial(fn) {
+    const result = this.queue.catch(() => {}).then(fn);
+    this.queue = result.catch(error => this.notice(error.message));
+    return this.queue;
+  }
+  notice(message) { this.ui.notice = message; this.emit(); }
+  async persist() { await this.db.save(this.data); }
+  async boot(code = '') {
+    await this.db.open();
+    const saved = await this.db.load();
+    if (saved?.identity && saved.config && (!saved.state || saved.state.schema === 1)) this.data = saved;
+    if (!this.data.identity.name) this.data.identity.name = funName();
+    this.ui.blocked = !!this.data.removed;
+    if (this.ui.blocked) this.ui.notice = 'You were removed from this group. Your saved history is available; leave in Settings to start again.';
+    if (!this.data.state && validCode(code)) this.data.targetCode = code;
+    else if (this.data.state && validCode(code) && code !== this.data.state.group.roomCode) {
+      this.ui.notice = `This link is for ${code}. You have a saved group; leave it in Settings before joining another.`;
+    }
+    if (this.data.role === 'host' && this.data.state) {
+      // Presence is transient: never restore stale green dots from disk.
+      for (const member of this.data.state.members) member.online = member.id === this.data.identity.id;
+      this.data.state.group.version++;
+      this.ui.hostOnline = true;
+    }
+    this.ui.ready = true; this.emit();
+    await this.persist();
+    if (this.data.role && this.data.targetCode) this.startRoom();
+    this.heartbeat = setInterval(() => this.tick(), 5000);
+    // Invite link with no saved group: join straight away with the prefilled
+    // name. Zero taps; the name can be changed later in Settings.
+    if (!this.data.state && !this.data.role && validCode(code)) {
+      await this.join(code, this.data.identity.name).catch(error => this.notice(error.message));
+    }
+  }
+  rerollName() { this.data.identity.name = funName(); this.emit(); return this.data.identity.name; }
+  setTab(tab) { this.ui.tab = tab; this.emit(); }
+  resetConnection() {
+    if (this.data.state) return;
+    this.network.stop(); this.data.targetCode = ''; this.data.role = null;
+    this.ui.hostOnline = false; this.ui.status = 'Ready'; this.emit();
+    return this.persist();
+  }
+  setInvitation(code) {
+    if (!validCode(code) || this.data.state) throw new Error('Invalid room invitation.');
+    this.data.targetCode = code; this.emit();
+  }
+  async create(name, displayName, manualOnly = false) {
+    if (this.data.state) throw new Error('Leave your current group in Settings first.');
+    const code = roomCode(), id = this.data.identity.id;
+    this.data.state = newGroup({ id: uid(), code, name, memberId: id, memberName: displayName, roundId: uid() });
+    this.data.identity.name = displayName.trim();
+    Object.assign(this.data, { role: 'host', targetCode: code, outbox: [], credentials: {}, revoked: [], removed: false });
+    this.data.credentials[id] = this.data.identity.token;
+    this.ui.hostOnline = true; this.ui.tab = 'lobby'; this.freshRoom = true; this.collisions = 0;
+    await this.persist(); this.emit();
+    await this.presets(); // start with a ready menu; everything stays editable
+    if (!manualOnly) this.startRoom();
+    else this.ui.status = 'Local host ready. Add a person to pair on the same Wi-Fi.';
+    this.emit();
+  }
+  async join(code, name, manualOnly = false) {
+    code = code.trim().toUpperCase(); name = name.trim();
+    if (!manualOnly && !validCode(code)) throw new Error('Enter a four-character room code (no 0, O, 1, I or L).');
+    if (!name || name.length > 30) throw new Error('Enter a display name of 1–30 characters.');
+    if (this.data.state) throw new Error('Leave your current group in Settings first.');
+    this.network.stop();
+    Object.assign(this.data, { role: 'member', targetCode: manualOnly ? '' : code, outbox: [], removed: false });
+    this.data.identity.name = name; this.ui.blocked = false;
+    await this.persist(); this.emit();
+    if (manualOnly) this.showManual();
+    else this.startRoom();
+  }
+  startRoom() {
+    if (this.ui.blocked) return;
+    this.network.start({ host: this.data.role === 'host', code: this.data.targetCode, config: this.data.config });
+  }
+  async collision() {
+    if (this.freshRoom && (this.collisions || 0) < 8) {
+      this.collisions = (this.collisions || 0) + 1;
+      await this.applyHost(this.intent('group.code', { code: roomCode() }));
+      this.data.targetCode = this.data.state.group.roomCode;
+      await this.persist(); this.startRoom();
+    } else this.notice('That room code is already registered. Close any duplicate host tab, wait a moment, then Retry. Or generate a new room code in Settings.');
+  }
+  intent(type, payload) {
+    return { id: uid(), type, payload, senderId: this.data.identity.id,
+      version: this.data.state?.group.version || 0, roundId: this.data.state?.round.id };
+  }
+  dispatch(type, payload) {
+    return this.serial(async () => {
+      if (this.ui.blocked) throw new Error('You were removed from this group. Leave it in Settings to start again.');
+      if (!PUBLIC_INTENTS.has(type)) throw new Error('Unsupported action.');
+      const intent = this.intent(type, typeof payload === 'function' ? payload(this.view().state) : payload);
+      if (this.data.role === 'host') await this.applyHost(intent);
+      else {
+        reduce(this.view().state, intent); // validation before optimistic preview
+        if (this.data.outbox.length >= 500) throw new Error('500 offline changes are waiting. Reconnect before making more changes.');
+        this.data.outbox.push(intent); await this.persist(); this.emit(); this.flush();
+      }
+    });
+  }
+  changePick(itemId, delta) {
+    return this.dispatch('pick.set', state => {
+      const current = state.picks.find(p => p.memberId === this.data.identity.id && p.itemId === itemId);
+      return { itemId, qty: Math.max(0, Math.min(99, (current?.qty || 0) + delta)), note: current?.note || '' };
+    });
+  }
+  saveNote(itemId, note) {
+    return this.dispatch('pick.set', state => {
+      const current = state.picks.find(p => p.memberId === this.data.identity.id && p.itemId === itemId);
+      if (!current) throw new Error('Add this item to your picks before saving a note.');
+      return { itemId, qty: current.qty, note };
+    });
+  }
+  async applyHost(intent) {
+    const savedData = copy(this.data);
+    const previous = this.data.state;
+    const next = reduce(previous, intent);
+    this.data.state = next;
+    if (intent.type === 'member.remove') {
+      if (!this.data.revoked.includes(intent.payload.id)) this.data.revoked.push(intent.payload.id);
+      delete this.data.credentials[intent.payload.id];
+    }
+    this.syncName();
+    try { await this.persist(); }
+    catch (error) { this.data = savedData; this.emit(); throw error; }
+    if (intent.type === 'member.remove') for (const link of [...this.network.links.values()]) {
+      if (link.memberId === intent.payload.id) {
+        this.network.send(link, { type: 'removed', payload: {}, senderId: next.group.hostId, version: next.group.version });
+        setTimeout(() => this.network.dropLink(link), 200);
+      }
+    }
+    this.emit(); this.broadcast(); return next;
+  }
+  syncName() {
+    const me = this.data.state?.members.find(m => m.id === this.data.identity.id);
+    if (me) this.data.identity.name = me.name;
+  }
+  sendState(link, ack = null, error = null) {
+    this.network.send(link, { type: 'state', senderId: this.data.identity.id, version: this.data.state.group.version,
+      payload: { state: this.data.state, ack, error } });
+  }
+  broadcast() {
+    if (this.data.role !== 'host' || !this.data.state) return;
+    for (const link of this.network.links.values()) if (link.memberId && this.data.state.members.some(m => m.id === link.memberId)) this.sendState(link);
+  }
+  hello(link) {
+    this.network.send(link, { type: 'hello', senderId: this.data.identity.id, version: this.data.state?.group.version || 0,
+      payload: { name: this.data.identity.name, token: this.data.identity.token, groupId: this.data.state?.group.id || null } });
+  }
+  async linkChanged(link, online) {
+    if (online) {
+      if (this.data.role === 'member') this.hello(link);
+      return;
+    }
+    if (this.data.role === 'host' && link.memberId && this.data.state?.members.some(m => m.id === link.memberId) &&
+        ![...this.network.links.values()].some(l => l.memberId === link.memberId)) {
+      await this.applyHost(this.intent('member.online', { id: link.memberId, online: false }));
+    } else if (this.data.role === 'member') {
+      this.ui.hostOnline = [...this.network.links.values()].some(l => l.authenticated);
+      if (!this.ui.hostOnline) this.ui.status = link.mode === 'manual' ? 'Host offline. Pair manually again when the host returns.' : 'Host offline. Retrying the saved room code…';
+      this.emit();
+    }
+  }
+  async receive(link, msg) {
+    if (!this.network.links.has(link.id)) return;
+    if (msg.type === 'ping') { this.network.send(link, { type: 'pong', payload: {}, version: 0, senderId: this.data.identity.id }); return; }
+    if (msg.type === 'pong') return;
+    if (this.data.role === 'host') {
+      if (msg.type === 'hello') {
+        const beforeHello = copy(this.data);
+        try {
+          const { token, name, groupId } = msg.payload || {};
+          const id = msg.senderId;
+          if (typeof id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(id) || id === this.data.identity.id ||
+              typeof token !== 'string' || token.length < 20 || token.length > 100) throw new Error('Invalid member identity.');
+          if (this.data.revoked.includes(id)) throw new Error('You were removed from this group.');
+          if (groupId && groupId !== this.data.state.group.id) throw new Error('This room now belongs to a different group. Leave the saved group before joining it.');
+          if (this.data.credentials[id]) {
+            if (this.data.credentials[id] !== token) throw new Error('This member identity belongs to another device.');
+          } else {
+            // Auto-resolve name clashes ("Sunny Otter 2") instead of bouncing the joiner.
+            let unique = typeof name === 'string' ? name.trim().slice(0, 27) || 'Guest' : 'Guest';
+            const taken = n => this.data.state.members.some(m => m.name.normalize('NFKC').toLowerCase() === n.normalize('NFKC').toLowerCase());
+            for (let i = 2; taken(unique) && i < 99; i++) unique = `${unique.replace(/ \d+$/, '')} ${i}`;
+            const next = reduce(this.data.state, this.intent('member.join', { id, name: unique }));
+            this.data.credentials[id] = token; this.data.state = next;
+          }
+          // Mark authenticated only after identity validation. Replace an old
+          // suspended connection rather than counting a reconnect twice.
+          link.memberId = id;
+          for (const old of [...this.network.links.values()]) if (old.id !== link.id && old.memberId === id) this.network.dropLink(old);
+          if (!this.data.state.members.find(m => m.id === id)?.online) {
+            this.data.state = reduce(this.data.state, this.intent('member.online', { id, online: true }));
+          }
+          await this.persist(); this.sendState(link); this.broadcast(); this.emit();
+          if (link.mode === 'manual' && this.ui.pairing) { this.ui.pairing.connected = true; this.emit(); }
+        } catch (error) {
+          this.data = beforeHello; link.memberId = null;
+          this.network.send(link, { type: 'rejected', payload: { message: error.message, removed: this.data.revoked.includes(msg.senderId) }, version: 0, senderId: this.data.identity.id });
+          setTimeout(() => this.network.dropLink(link), 300);
+        }
+        return;
+      }
+      if (!link.memberId) return;
+      if (msg.type === 'sync') { this.sendState(link); return; }
+      if (msg.type !== 'intent') return;
+      const intent = msg.payload;
+      if (!intent || !PUBLIC_INTENTS.has(intent.type) || intent.senderId !== link.memberId) return;
+      // Bind identity to the authenticated channel, never trust an envelope ID.
+      try {
+        await this.applyHost({ ...intent, senderId: link.memberId });
+        this.sendState(link, intent.id);
+      } catch (error) { this.sendState(link, intent.id, error.message); }
+    } else if (this.data.role === 'member') {
+      if (msg.type === 'removed') {
+        this.ui.blocked = true; this.data.removed = true; this.data.outbox = []; this.ui.hostOnline = false;
+        this.network.stop(); await this.persist(); this.notice('The host removed you from this group. Your saved history is still available.'); return;
+      }
+      if (msg.type === 'rejected') {
+        this.network.stop(); this.ui.hostOnline = false;
+        if (msg.payload?.removed) { this.data.removed = true; this.ui.blocked = true; this.data.outbox = []; await this.persist(); }
+        this.notice(msg.payload?.message || 'The host could not accept this connection.'); return;
+      }
+      if (msg.type !== 'state') return;
+      const incoming = msg.payload?.state;
+      if (incoming?.schema !== 1 || !incoming.group || incoming.group.hostId !== msg.senderId ||
+          !Number.isSafeInteger(incoming.group.version) || !Array.isArray(incoming.members) || !Array.isArray(incoming.menu) ||
+          !Array.isArray(incoming.picks) || !Array.isArray(incoming.history) || !Array.isArray(incoming.receipts) || !incoming.round ||
+          !incoming.members.some(m => m.id === this.data.identity.id)) return;
+      if (this.data.state && incoming.group.id !== this.data.state.group.id) { this.notice('A different group is using that code. Your saved group has been kept.'); return; }
+      if (this.data.state && incoming.group.version < this.data.state.group.version) return;
+      const firstSync = !this.data.state;
+      link.authenticated = true;
+      if (link.mode === 'manual' && this.ui.pairing) this.ui.pairing.connected = true;
+      this.data.state = incoming;
+      this.data.targetCode = incoming.group.roomCode;
+      this.network.code = incoming.group.roomCode;
+      this.data.outbox = this.data.outbox.filter(i => i.id !== msg.payload.ack && !incoming.receipts.includes(i.id));
+      this.ui.hostOnline = true; this.ui.status = `Connected to host · ${link.mode === 'manual' ? 'local Wi-Fi' : 'peer-to-peer'}`;
+      this.syncName(); await this.persist();
+      if (firstSync) this.ui.tab = incoming.menu.length ? 'picks' : 'menu'; // joiners land where the action is
+      this.emit();
+      if (msg.payload.error) this.notice(`A queued change was not applied: ${msg.payload.error}`);
+      this.flush();
+    }
+  }
+  flush() {
+    if (this.data.role !== 'member' || !this.data.outbox.length) return;
+    const link = [...this.network.links.values()].find(l => l.authenticated);
+    if (!link) return;
+    // Send one at a time; each ack/full state confirms the next base state.
+    const intent = this.data.outbox[0];
+    if (this.inflight?.id === intent.id && Date.now() - this.inflight.time < 4000) return;
+    this.inflight = { id: intent.id, time: Date.now() };
+    this.network.send(link, { type: 'intent', payload: intent, version: this.data.state.group.version, senderId: this.data.identity.id });
+  }
+  tick() {
+    for (const link of [...this.network.links.values()]) {
+      if (Date.now() - link.lastSeen > 25000) { this.network.dropLink(link); continue; }
+      this.network.send(link, { type: 'ping', payload: {}, version: 0, senderId: this.data.identity.id });
+    }
+    this.flush();
+  }
+  foreground() {
+    this.tick(); this.network.resume();
+    for (const link of this.network.links.values()) {
+      if (this.data.role === 'member') this.network.send(link, { type: 'sync', payload: {}, senderId: this.data.identity.id, version: this.data.state?.group.version || 0 });
+    }
+  }
+  async presets() {
+    for (const [name, category] of PRESETS) {
+      if (!this.view().state.menu.some(i => i.name.toLowerCase() === name.toLowerCase())) {
+        await this.dispatch('menu.upsert', { id: uid(), name, category, price: 0 });
+      }
+    }
+  }
+  suggest() {
+    const menu = this.view().state?.menu;
+    if (!menu?.length) { this.notice('Add a few menu items first.'); return; }
+    if (this.ui.shuffling) return;
+    this.ui.shuffling = true; let count = 0;
+    const timer = setInterval(() => {
+      this.ui.suggested = menu[crypto.getRandomValues(new Uint32Array(1))[0] % menu.length].id;
+      if (++count >= 8) { clearInterval(timer); this.ui.shuffling = false; }
+      this.emit();
+    }, 75);
+  }
+  async settings(config) {
+    this.data.config = validateConfig(config); await this.persist();
+    this.notice('Connection settings saved. They will be used for new connections.');
+  }
+  async regenerateCode() {
+    if (this.data.role !== 'host') return;
+    await this.dispatchInternalCode(roomCode());
+    this.freshRoom = true; this.collisions = 0; this.startRoom();
+  }
+  async dispatchInternalCode(code) {
+    await this.serial(async () => {
+      this.data.targetCode = code;
+      await this.applyHost(this.intent('group.code', { code }));
+    });
+  }
+  async leave() {
+    this.network.stop();
+    Object.assign(this.data, { state: null, role: null, targetCode: '', outbox: [], credentials: {}, revoked: [], removed: false });
+    Object.assign(this.ui, { hostOnline: false, tab: 'lobby', pairing: null, blocked: false, notice: '', status: 'Ready' });
+    await this.persist(); this.emit();
+  }
+  showManual() {
+    this.ui.pairing = { step: this.data.role === 'host' ? 'host-start' : 'join-offer', text: '', busy: false, sessionId: null };
+    this.emit();
+  }
+  closeManual() {
+    if (this.ui.pairing?.sessionId) this.network.cancelManual(this.ui.pairing.sessionId);
+    this.ui.pairing = null; this.emit();
+  }
+  async offer() {
+    const pairing = this.ui.pairing;
+    pairing.busy = true; this.emit();
+    try {
+      const value = await this.network.makeOffer();
+      if (this.ui.pairing !== pairing) { this.network.cancelManual(value.id); return; }
+      Object.assign(pairing, { step: 'host-answer', value, sessionId: value.id, text: await encodePairing(value) });
+    } finally { pairing.busy = false; this.emit(); }
+  }
+  async pair(text) {
+    const pairing = this.ui.pairing;
+    pairing.busy = true; this.emit();
+    try {
+      const value = await decodePairing(text);
+      if (this.data.role === 'host') {
+        await this.network.acceptAnswer(value); pairing.step = 'waiting';
+      } else {
+        const answer = await this.network.makeAnswer(value);
+        if (this.ui.pairing !== pairing) { this.network.cancelManual(value.id); return; }
+        Object.assign(pairing, { step: 'join-answer', value: answer, sessionId: answer.id, text: await encodePairing(answer) });
+      }
+    } finally { pairing.busy = false; this.emit(); }
+  }
+  compatibility() {
+    const pairing = this.ui.pairing;
+    if (pairing?.value) { pairing.text = compatibilityPairing(pairing.value); this.emit(); }
+  }
+  backup() { return JSON.stringify({ app: 'chaikadi.fyi', exportedAt: new Date().toISOString(), data: this.data }, null, 2); }
+}

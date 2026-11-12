@@ -1,0 +1,398 @@
+# Chaikadi · chaikadi.fyi
+
+A small-group tea-break / food-order PWA for **2–15 people**. Create a group,
+share a four-character room code, choose items, designate one orderer, and track
+the bill. No accounts, app-store installation, backend database, analytics or
+runtime CDN dependencies.
+
+**Deploy these files as-is. There is no build step or `npm install`.** The UI is
+Preact + htm, vendored locally; state, persistence and networking are plain ES
+modules independent of the UI framework.
+
+## Run locally
+
+With Nix:
+
+```sh
+nix develop
+python3 tools/serve.py        # http://localhost:8080
+# Open http://localhost:8080
+```
+
+`tools/serve.py` is the stdlib server with a larger connection queue. Plain
+`python3 -m http.server` works for one browser, but drops connections when
+several fresh browsers load the app at once.
+
+Or run the Python command with an existing Python installation. `localhost` is a
+secure-context exception for development. **A phone visiting an HTTP LAN IP is
+not a secure context**: use an HTTPS staging deployment for camera, service
+worker, installation and real-device tests. Do not open `index.html` via `file:`.
+
+Pure state/protocol tests require Node 22+ (included in `flake.nix`):
+
+```sh
+nix develop --command npm test
+# or node --test tests/*.test.js
+# Optional sandboxed check for the current platform:
+nix flake check
+```
+
+`flake.lock` pins the dev environment. Node/Python are **development tools only**.
+`tools/generate-icons.mjs` regenerates the already committed PNGs if desired.
+
+Optional browser integration checks use a separate Playwright installation
+(not a shipped dependency). With the static server running:
+
+```sh
+# In the Nix dev shell, install test tooling outside the deployment directory:
+npm install --prefix /path/to/test-tools playwright
+/path/to/test-tools/node_modules/.bin/playwright install chromium webkit
+export PLAYWRIGHT_MODULE=/path/to/test-tools/node_modules/playwright/index.mjs
+node tests/browser.mjs                 # real local WebRTC + offline/PWA flow
+BROWSER=webkit node tests/browser.mjs  # WebKit equivalent
+node tests/room.mjs                    # real public signaling; needs internet
+```
+
+Set `TEST_URL` to override `http://127.0.0.1:8080`. `SCREENSHOT_PATH` overrides
+the browser smoke's screenshot destination. The tests use isolated profiles;
+they do not edit an existing user's group. Run browser suites sequentially.
+
+## Deploy with the custom domain
+
+Use the **root of a domain** (e.g. `https://chaikadi.fyi/`). Invite links and
+QRs use whatever origin the app is opened from, so `chaikadi.pages.dev` and
+`chaikadi.fyi` both work. Room-QR scanning accepts those two hosts plus the
+current one (see `js/ui.js`).
+
+### GitHub Pages
+
+1. Put these files in a GitHub repository, including `vendor/`, `icons/`,
+   `.nojekyll`, and `CNAME`.
+2. Settings → Pages → Deploy from a branch → choose your branch and `/ (root)`.
+3. Set the custom domain to `chaikadi.fyi`. The included `CNAME` has that value.
+4. At your DNS provider, configure the apex using GitHub Pages' current A/AAAA
+   records (or an ALIAS/ANAME to `<username>.github.io` if supported). Follow
+   GitHub's custom-domain verification instructions.
+5. After GitHub provisions the certificate, enable **Enforce HTTPS**.
+6. Open the custom domain and wait for **Offline app ready** in the footer.
+
+GitHub project-subdirectory preview URLs can load the relative shell, but invites
+still point at the production domain. Use the actual custom domain for group tests.
+
+### Netlify
+
+1. Import the repository or deploy the directory with drag-and-drop.
+2. Leave the build command empty; publish directory is `.`.
+3. Domain management → add `chaikadi.fyi`; point DNS to the records Netlify shows.
+4. Enable/provision HTTPS and redirect HTTP to HTTPS.
+
+### Cloudflare Pages
+
+1. Create a Pages project from the repository, framework preset **None**.
+2. No build command; output directory `.` (the repository root).
+3. Add `chaikadi.fyi` under Custom domains and complete DNS verification.
+4. Enable HTTPS. No Worker or Functions are needed.
+
+For all providers: serve `.js` as JavaScript, `.json` as JSON and `.png` as PNG.
+Avoid long-lived HTTP caching for `sw.js`; normal revalidation is appropriate.
+There are no path routes to rewrite: navigation is one page with `?room=ABCD`.
+Development files may be omitted from deployment; all files in `sw.js`'s `SHELL`
+must be present. Do not rename or remove a precached file without updating it.
+
+### Updating the app
+
+Bump `CACHE` in `sw.js` whenever an app or vendor file changes, then deploy the
+complete directory together. The new shell is precached atomically. Updates wait
+until all existing app windows close, preserving active orders. The app tells
+users when a new worker is waiting. No forced reload or mid-order `skipWaiting`.
+
+## Install on phones
+
+- **iPhone / iPad (Safari 16+)**: visit the HTTPS site in Safari → Share → Add to
+  Home Screen → Add. Launch the new Chaikadi icon.
+- **Android (Chrome)**: visit the HTTPS site → browser menu → Install app / Add to
+  Home screen. The exact menu label varies by Chrome version.
+- Visit online once and wait for **Offline app ready** before disconnecting.
+  The service worker precaches all UI, scripts, dependencies and icons.
+- Create or join from the environment you will keep using. Safari and a
+  home-screen app may have separate storage on some iOS versions; do not assume
+  a browser group's identity transfers to the installed app.
+
+## How to use it
+
+1. **Create group** with a group name and your display name. You are the host and
+   initial orderer. Keep your app open.
+2. Others type the room code and their name, open your invite link, or scan the
+   invite QR. Names must be unique (case-insensitive) within the group.
+3. In **Menu**, add items or tap **Add tea-break presets**. The nine presets start
+   at ₹0. Everyone can edit items and prices while the order is open.
+4. In **My picks**, use +/−, enter optional item notes and tap **Save note**.
+   **Surprise me / Re-roll** is a private suggestion, not a vote.
+5. **Order** shows quantities, notes, per-person details and a copyable summary.
+   Only the assigned orderer can **Lock & place order** or unlock. This is a
+   bookkeeping action: place the order yourself by phone/chat/shop app.
+6. **Costs** shows subtotals to everyone. Once locked, the orderer enters the
+   actual bill, chooses the difference split, and toggles Paid / Not paid.
+7. **Finish round** archives a full snapshot, clears current picks/bill/payments,
+   and retains the group, members and menu. History shows outstanding amounts
+   across rounds and lets each round's orderer mark late payments.
+8. **Settings** changes your name, host-controlled currency label and connection
+   settings. Export local JSON before leaving a group or clearing browser data.
+
+### Bill arithmetic
+
+All prices and totals are **integer minor units** (paise for INR), displayed to
+two decimal places. Only members with at least one pick participate in a split.
+The orderer's own share is displayed but is not counted as debt to themselves.
+
+- Estimated subtotals ₹10 + ₹20, actual bill ₹36:
+  - Equal **difference**: ₹13 + ₹23 (each pays ₹3 of the ₹6 extra).
+  - Proportional difference: ₹12 + ₹24.
+- Zero-priced picks are valid. If all subtotals are zero, proportional falls
+  back to equal splitting.
+- Largest-remainder allocation makes shares add up exactly to the actual bill.
+- Discounts are supported. Equal discounts cannot make someone's share
+  negative; excess discount is redistributed among remaining positive shares.
+- Saving a bill again, or unlocking, clears current payment marks. Finish may
+  archive an estimated-only round if no actual bill was entered; it is labeled
+  accordingly. Archived amounts and currencies are not affected by menu edits.
+
+## Connections
+
+### A. Room codes (default)
+
+- The host creates a cryptographically random four-character code using
+  `23456789ABCDEFGHJKMNPQRSTUVWXYZ` (no `0/O/1/I/L`).
+- The host registers the PeerJS ID **`chaikadi-<ROOMCODE>`**. New-room registration
+  collisions regenerate the code. A saved host whose ID is taken gets a clear
+  message rather than silently abandoning the saved code.
+- Joiners get transient PeerJS IDs and connect directly to that host.
+- Public PeerJS cloud signaling exchanges SDP/ICE metadata. The configured
+  public STUN servers help discover reachable addresses. No group, display
+  name, picks, bill or history is sent through signaling messages.
+- Once a WebRTC DataChannel opens, all application data is exchanged over that
+  encrypted peer connection. Signaling may remain connected for new joins and
+  reconnects; it never carries application state. With a configured TURN server,
+  encrypted peer traffic may be relayed through TURN.
+- Settings defaults use `0.peerjs.com:443`, path `/`, key `peerjs`, and Google /
+  Twilio STUN. PeerJS's bundled default TURN configuration is **overridden** by
+  the explicitly supplied STUN-only ICE list.
+- Invalid/expired/unreachable codes, name conflicts and capacity errors produce
+  human-readable messages. The manual pairing option is always available and
+  highlighted when signaling fails.
+
+### B. Manual pairing (no internet)
+
+1. Both devices join the **same local Wi-Fi**. Internet access may be disabled.
+   Both must have loaded/installed Chaikadi online beforehand.
+2. Host chooses **Create offline · pair manually**, or uses an existing group.
+3. Host opens **Add person manually → Create offer**. Wait for ICE gathering.
+4. Joiner chooses **Join group**, enters a name, and taps **No internet? Pair
+   manually**. Scan or paste the host's offer → **Create answer**.
+5. Joiner shows/copies their answer. Host scans or pastes it → **Connect person**.
+6. Wait for **Connected!** and the new online member. Close the panels. Repeat
+   with a fresh offer for every additional person.
+
+This uses raw `RTCPeerConnection({ iceServers: [] })`: no signaling, STUN or TURN
+calls for the manual exchange. We wait for ICE gathering to finish, strip a few
+irrelevant SDP lines, and use deflate compression where `CompressionStream`
+exists. Uncompressed `CK1.n.…` text is the fallback; **Compatibility text** can
+be selected when the receiving browser cannot decompress. `CK1.z.…` is deflated.
+
+QR generation and camera decoding are local (`qrcode-generator`, `jsQR`), using
+`getUserMedia`. No `BarcodeDetector`, Bluetooth, sharing API, or external QR
+service. Codes over 1,500 characters use the **text-only fallback** instead of
+an unreliable dense QR. Copy/paste can be transferred using any channel the
+users already have, including chat, AirDrop or Nearby Share; the app does not
+integrate with or invoke those services. Camera denial always leaves text input.
+
+Manual SDP is valid only for the live pending connection. A refresh, closed
+pending panel, or failed channel needs a **new offer and answer**. Keep the
+pairing panels open until connected. A manual-only group's visible room code
+becomes discoverable only when its host also registers with signaling.
+
+### Reconnect, offline edits and authority
+
+- The **host is the sole authoritative writer**; members send validated intents.
+- The envelope is `{ type, payload, version, senderId }`. Intents add unique
+  `id` and `roundId`. Full-state snapshots include a monotonic group version.
+- A persistent random member ID and secret reconnect token authenticate the
+  returning device. Tokens are transmitted only inside the peer channel; the
+  host's credential table is never included in the shared state. Sender identity
+  is bound to the channel, not trusted from a submitted payload.
+- Four-character codes are convenient invitations, **not strong access control**.
+  Anyone who knows/guesses a live code can join an available slot. Use this MVP
+  for small trusted groups; do not store sensitive information in names/notes.
+- Each accepted change is persisted before acknowledgement/broadcast. Item IDs,
+  an acknowledged-intent window and monotonically increasing versions prevent
+  duplicates. Round IDs reject stale picks/bills/finish commands.
+- On members, edits made without the host are persisted in an outbox and shown
+  as local pending changes. On reconnect, a full authoritative snapshot arrives
+  and queued intents replay one by one. The host can reject them if the round
+  finished, item was removed, privileges changed, or picks were locked. Rejected
+  intents are removed with a visible message. Locks always win at the host.
+- A heartbeat marks lost peers offline after about 25 seconds. Foregrounding
+  triggers room-code reconnect and full sync. Manual channels cannot redo their
+  handshake automatically; re-pair if disconnected. A room reconnect is also
+  attempted if internet and the saved room code are available.
+- Host offline means edits cannot become shared/authoritative. When the same
+  host returns, its locally saved group resumes. **No host migration**.
+- Dropping the internet does not require dropping a live local peer connection.
+  A network-interface change (e.g. Wi-Fi to cellular) can still break WebRTC.
+
+## Self-hosted signaling and TURN configuration
+
+The documented hook is `js/config.js` → `DEFAULT_CONFIG`. Settings can override
+it per device without changing deployed files. Example:
+
+```json
+{
+  "signaling": {
+    "host": "signal.example.com",
+    "port": 443,
+    "path": "/peerjs",
+    "secure": true,
+    "key": "peerjs"
+  },
+  "iceServers": [
+    { "urls": "stun:stun.l.google.com:19302" },
+    {
+      "urls": ["turn:turn.example.com:3478", "turns:turn.example.com:5349"],
+      "username": "issued-username",
+      "credential": "issued-password"
+    }
+  ]
+}
+```
+
+Paste `signaling` and `iceServers` into the separate JSON fields in Settings.
+Use a **PeerServer-compatible** signaling service with HTTPS/WSS, correct
+WebSocket proxying and origin configuration. A generic WebSocket server/worker
+is not sufficient. All devices need the same signaling host/port/path/key.
+Manual pairing deliberately ignores this config and always uses `iceServers: []`.
+Changes affect new connections; use **Retry room connection** when ready.
+
+TURN credentials shipped in static source or entered locally are visible to
+that client. Use suitable quotas/short-lived credentials for a real deployment;
+credential issuance needs a service you control. No such service is required
+or shipped with this MVP.
+
+## Persistence and limitations
+
+- IndexedDB stores one transactional snapshot containing identity, config,
+  group/menu/picks, history, outbox, and (host-only) reconnect credentials.
+  If unavailable or a write fails, localStorage is used. A newer fallback
+  snapshot wins on reload. Storage errors are visible; no false “saved” success.
+- Browser eviction, private browsing restrictions, clearing site data, or losing
+  the host device can lose data. JSON export includes private reconnect
+  credentials: keep it private. Automated backup import is not in this MVP.
+- One active group and one active app tab per device. Use separate browser
+  profiles for multiple simulated people. Display names can be changed without
+  changing member IDs. Removed members retain their local historical copy, but
+  cannot reconnect as that revoked identity to the same group.
+- A member with an old saved group is not silently moved into a different group
+  that happens to reuse its room code. Leave explicitly to join the new group.
+- Limits: 15 people, 200 menu items, quantity 0–99, 160-character notes, 500
+  pending offline changes per device, and a 2,000-intent deduplication window.
+  Full peer snapshots are bounded to 4 MiB; very large multi-round histories
+  require export and starting a fresh group. Data is never silently truncated.
+- Room-code handshakes need brief internet access; manual pairing needs a
+  shared local network and working local candidate resolution.
+- Strict corporate networks, guest Wi-Fi isolation and symmetric NAT can block
+  direct peer connections. A TURN server helps room mode; manual mode cannot
+  bypass network isolation.
+- Public PeerJS cloud is best-effort, rate-limited and outside our control.
+- iOS suspends background tabs and may drop channels. Keep the host foregrounded;
+  automatic room reconnect runs on return. No Wake Lock or platform-specific API.
+- Some iOS versions obscure local ICE candidates with mDNS names that may not
+  resolve on another device/network. The pairing panel includes a troubleshooting
+  tip; try another shared Wi-Fi or room mode with internet.
+- All members see the group’s picks, notes, costs and history. The host can edit
+  its own saved state; this is coordination among friends, not an audit ledger.
+- Currency is a label, with two decimals, not an exchange-rate conversion.
+- The order is copied/placed externally, and Paid is bookkeeping, not a payment.
+
+## Architecture / file tree
+
+```text
+chaikadi.fyi/
+├── index.html                 SPA entry; only local scripts/styles
+├── styles.css                 mobile-first, dark-mode, accessible tap targets
+├── manifest.json              install metadata + PNG/maskable icons
+├── sw.js                      atomic whole-shell precache; offline navigation
+├── CNAME                      chaikadi.fyi for GitHub Pages
+├── .nojekyll                  serve static files unchanged
+├── .gitignore                 local tooling / generated test-output exclusions
+├── flake.nix                  optional Node/Python development environment
+├── flake.lock                 pinned Nix inputs
+├── package.json               ES-module mode and dependency-free test command
+├── README.md
+├── TEST_PLAN.md               laptop + iPhone + Android acceptance plan
+├── icons/
+│   ├── icon.svg
+│   ├── icon-192.png
+│   ├── icon-512.png
+│   ├── maskable-512.png
+│   └── apple-touch-icon.png
+├── js/
+│   ├── config.js              defaults, config hook, IDs and code validation
+│   ├── state.js               pure reducer, totals, debt tally, persistence
+│   ├── store.js               subscribed app store, protocol, offline outbox
+│   ├── p2p.js                 framework-free PeerJS/raw WebRTC transport
+│   ├── qr.js                  local generation and camera scan lifecycle
+│   ├── ui.js                  Preact + htm rendering; subscribes to store
+│   └── main.js                boot, PWA registration, foreground reconnect
+├── vendor/
+│   ├── preact.module.js
+│   ├── htm.module.js
+│   ├── peerjs.min.js
+│   ├── qrcode.js
+│   ├── jsQR.js
+│   ├── preact.LICENSE
+│   ├── htm.LICENSE
+│   ├── peerjs.LICENSE
+│   ├── qrcode.LICENSE
+│   ├── jsQR.LICENSE
+│   └── README.md              pinned versions and provenance
+├── tests/
+│   ├── state.test.js          reducer, arithmetic, pairing codec, fallback
+│   ├── protocol.test.js       authority, identity, replay and offline sync
+│   ├── browser.mjs            optional real-browser / manual-WebRTC smoke
+│   └── room.mjs               optional public-cloud / room-reconnect smoke
+└── tools/
+    ├── serve.py               local dev server (bigger connection queue)
+    └── generate-icons.mjs     optional dependency-free icon utility
+```
+
+For new features, add a validated reducer intent, route it through the store,
+then render it in the UI. Do not mutate shared state directly from components.
+Private UI helpers (suggestion animation, draft fields, scanner) do not become
+shared intents until the member accepts/saves them. IDs and timestamps are
+provided to the reducer, keeping it deterministic and straightforward to test.
+
+## Suggested next enhancements
+
+1. UI polish: richer menu cards, smoother input drafts, connection onboarding.
+2. Self-hosted PeerServer-compatible signaling (or a compatible worker adapter).
+3. Host migration with explicit authority epochs and conflict recovery.
+4. Per-member payment reminders with opt-in sharing.
+5. Shared favourites / reusable group menus.
+6. Order from history with unavailable-item and price-change review.
+
+See [TEST_PLAN.md](TEST_PLAN.md) for the real-device acceptance checklist.
+
+## License
+
+Copyright © 2026 Vysakh Premkumar.
+
+Chaikadi is free software: you can redistribute it and/or modify it under the
+terms of the **GNU Affero General Public License, version 3** only, as published
+by the Free Software Foundation. See [LICENSE](LICENSE).
+
+Under AGPL §13, if you run a modified version for others over a network, you
+must offer them its source. The app footer links to this repository; point it
+at your fork if you deploy modifications.
+
+The files in `vendor/` are third-party libraries under their own licenses
+(MIT and Apache-2.0, see `vendor/README.md` and the `*.LICENSE` files there).
+Both are compatible with AGPL-3.0 when combined in this work.

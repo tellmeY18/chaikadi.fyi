@@ -1,0 +1,8 @@
+{
+  "name": "chaikadi.fyi",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "repository": "github:tellmeY18/chaikadi.fyi",
+  "type": "module",
+  "scripts": { "test": "node --test tests/*.test.js" }
+}
