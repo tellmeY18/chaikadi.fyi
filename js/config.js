@@ -8,7 +8,29 @@ export const DEFAULT_CONFIG = {
 export const ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
 // Multi-menu writes require the same protocol on every peer. Storage remains
 // schema 1 with an additive migration; old app versions must not drop menu IDs.
-export const PROTOCOL_VERSION = 2;
+// v3: menus can record the library place they were imported from.
+export const PROTOCOL_VERSION = 3;
+
+// MENU LIBRARY HOOK. Volunteer-maintained CC0 menu data (static JSON).
+// DATA_BASE_URL can be overridden per device in Settings; the service worker
+// runtime-caches only this default origin (other origins use IndexedDB only).
+export const DATA_BASE_URL = 'https://data.chaikadi.fyi';
+export const DATA_FETCH_TIMEOUT_MS = 8000;
+// Optional HTTPS endpoint accepting suggested menu updates as JSON. Empty means
+// "open a prefilled GitHub issue" instead. Never receives personal data.
+export const SUGGEST_ENDPOINT = '';
+export const DATA_REPO_URL = 'https://github.com/tellmeY18/chaikadi-data';
+
+// https:// origins only; http:// is allowed for localhost while developing.
+export function validateDataBaseUrl(value) {
+  let url;
+  try { url = new URL(String(value).trim()); } catch { throw new Error('Enter a full URL, for example https://data.chaikadi.fyi'); }
+  const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+  if (!(url.protocol === 'https:' || (local && url.protocol === 'http:')) || url.username || url.password || url.search || url.hash) {
+    throw new Error('Use an https:// address without a username, query or #fragment.');
+  }
+  return url.href.replace(/\/+$/, '');
+}
 export const CATEGORIES = ['Tea', 'Snacks', 'Meal', 'Other'];
 export const PRESETS = [
   ['Chai', 'Tea'], ['Masala Chai', 'Tea'], ['Ginger Chai', 'Tea'],

@@ -1,8 +1,9 @@
-import { DEFAULT_CONFIG, PRESETS, PROTOCOL_VERSION, uid, roomCode, validCode, validateConfig, funName } from './config.js';
+import { DEFAULT_CONFIG, PRESETS, PROTOCOL_VERSION, uid, roomCode, validCode, validateConfig, validateDataBaseUrl, funName } from './config.js';
 import { newGroup, reduce, Persistence, migrate } from './state.js';
 import { Network, PUBLIC_INTENTS, encodePairing, decodePairing, compatibilityPairing } from './p2p.js';
 
 const copy = value => JSON.parse(JSON.stringify(value));
+const sameText = (a, b) => a.normalize('NFKC').toLowerCase() === b.normalize('NFKC').toLowerCase();
 
 // Framework-agnostic application store. UI only subscribes and calls actions.
 export class AppStore {
@@ -323,10 +324,49 @@ export class AppStore {
     for (let n = 2; taken.has(name.normalize('NFKC').toLowerCase()); n++) name = `${(base || 'Menu').trim().slice(0, 55)} ${n}`;
     return name;
   }
-  async newMenu(name) {
+  async newMenu(name, source) {
     const id = uid();
-    await this.dispatch('menu.create', { id, name: this.uniqueMenuName(name) });
+    await this.dispatch('menu.create', source ? { id, name: this.uniqueMenuName(name), source } : { id, name: this.uniqueMenuName(name) });
     return this.view().state.menus.some(m => m.id === id) ? id : null;
+  }
+  // Import a (sanitised) library place. Modes:
+  //  'new'     – a new saved menu linked to the place (default when not linked yet)
+  //  'replace' – make the linked menu match the library: same-name items keep their
+  //              id (picks survive) and get library prices; items not in the
+  //              library are removed
+  //  'add'     – only add items the linked menu does not have yet
+  async importLibraryPlace(place, city, mode = 'new') {
+    const items = [];
+    for (const item of place.menu) {
+      if (item.available === false) continue;
+      const name = item.name.slice(0, 60).trim();
+      if (items.some(i => sameText(i.name, name))) continue;
+      items.push({ name, category: item.category === 'Coffee' ? 'Tea' : item.category, price: Math.round(item.price * 100), libraryCategory: item.category });
+    }
+    const source = { placeId: place.id, city, name: place.name, lastConfirmed: place.last_confirmed, sample: place.sample === true,
+      items: items.map(i => ({ name: i.name, category: i.libraryCategory, price: i.price })) };
+    const linked = this.view().state.menus.find(m => m.source?.placeId === place.id);
+    if (mode === 'new' || !linked) {
+      const menuId = await this.newMenu(place.name, source);
+      if (!menuId) return { menuId: null, added: 0, updated: 0, removed: 0 };
+      const result = await this.importMenu(items, { menuId });
+      return { ...result, removed: 0 };
+    }
+    const result = await this.importMenu(items, { menuId: linked.id, skipExisting: mode === 'add' });
+    let removed = 0;
+    if (mode === 'replace') {
+      for (const item of this.view().state.menu.filter(i => i.menuId === linked.id && !items.some(x => sameText(x.name, i.name)))) {
+        if (!await this.dispatch('menu.delete', { id: item.id })) throw new Error('Some items could not be removed. Check the message above.');
+        removed++;
+      }
+    }
+    if (!await this.dispatch('menu.source', { id: linked.id, source })) throw new Error('Could not record where this menu came from.');
+    return { ...result, removed, menuId: linked.id };
+  }
+  async setDataBaseUrl(url) {
+    this.data.config = { ...this.data.config, dataBaseUrl: url ? validateDataBaseUrl(url) : undefined };
+    if (!url) delete this.data.config.dataBaseUrl;
+    await this.persist(); this.emit();
   }
   // Scanned/imported items go into `menuId` (a new menu named after the
   // scanned heading when omitted). Same-name items in that menu are updated
@@ -369,8 +409,11 @@ export class AppStore {
     setTimeout(strike, delays[0]);
   }
   async settings(config) {
-    this.data.config = validateConfig(config); await this.persist();
-    this.notice('Connection settings saved. They will be used for new connections.');
+    const dataBaseUrl = this.data.config.dataBaseUrl;
+    this.data.config = validateConfig(config);
+    if (dataBaseUrl) this.data.config.dataBaseUrl = dataBaseUrl;
+    await this.persist();
+    this.toast('Connection settings saved. They apply to new connections.');
   }
   async regenerateCode() {
     if (this.data.role !== 'host') return;

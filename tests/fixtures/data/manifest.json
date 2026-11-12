@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-11-12T00:00:00Z",
+  "commit": "0000000",
+  "freshness": {
+    "freshDays": 90,
+    "staleDays": 365
+  },
+  "cities": [
+    {
+      "id": "in/kl/ernakulam",
+      "name": "Ernakulam",
+      "placeCount": 3,
+      "url": "index/in-kl-ernakulam.json",
+      "sha256": "5f5a9ccdde420c2ac44ba3b2f6a40777e65e3c3fb656c379b6fc0c4b92308790",
+      "bytes": 2284
+    }
+  ]
+}

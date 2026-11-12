@@ -105,6 +105,18 @@ rows have decorative dotted leaders and wrap long names instead of truncating.
 - **Confirmations:** Keep is solid primary, destructive action dashed with alert
   icon. Destructive deletion never relies on a colour distinction.
 - **Toasts:** ink/paper, polite live region, 3 seconds, above the bottom bar.
+- **Menu library sheet:** city select, search field, result rows (bold name,
+  caption item count, freshness chip, optional Sample tag) separated by hair
+  rules. Preview uses menu-board leader rows grouped by category, one primary
+  **Use this menu**, outlined **Suggest an update** with the external-link icon.
+  Re-importing a linked stall offers primary **Add missing items only** and a
+  dashed alert **Replace items**.
+- **Freshness chip:** 1px ink outline, 16px icon plus words. Fresh: check icon,
+  bold “Confirmed N days ago”. Stale: clock icon, 3px double border, “Prices
+  may be old”. Unverified: alert icon, dashed border, “Not confirmed recently”.
+- **Sample tag:** dashed outline on tint, bold “Sample”.
+- **Share prompt:** after Finish round only; changed items as leader rows with
+  “was … now …” captions. **Not now** is the solid primary; sharing is outlined.
 
 ## Motion
 

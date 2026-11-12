@@ -10,6 +10,34 @@ const idString = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,80}$/.t
 const money = value => Number.isSafeInteger(value) && value >= 0 && value <= 100000000;
 const sameName = (a, b) => a.normalize('NFKC').toLowerCase() === b.normalize('NFKC').toLowerCase();
 
+// Where an imported menu came from: a snapshot of the library prices (in
+// minor units) so later edits can be offered back as suggested updates.
+const LIBRARY_CATEGORIES = ['Tea', 'Coffee', 'Snacks', 'Meal', 'Other'];
+function menuSource(value) {
+  if (value === null || value === undefined) return null;
+  assert(value && typeof value === 'object' && /^(node|way|relation)\/[1-9][0-9]{0,14}$/.test(value.placeId) &&
+    /^[a-z]{2}\/[a-z0-9-]{1,60}\/[a-z0-9-]{1,60}$/.test(value.city) && /^\d{4}-\d{2}-\d{2}$/.test(value.lastConfirmed) &&
+    Array.isArray(value.items) && value.items.length <= 150, 'Invalid menu library link.');
+  return {
+    placeId: value.placeId, city: value.city, name: text(value.name, 80, 'Library place name'), lastConfirmed: value.lastConfirmed,
+    sample: value.sample === true,
+    items: value.items.map(item => {
+      assert(item && money(item.price) && LIBRARY_CATEGORIES.includes(item.category), 'Invalid library item.');
+      return { name: text(item.name, 80, 'Library item name'), category: item.category, price: item.price };
+    }),
+  };
+}
+
+// Items of a library-linked menu whose price differs from the imported price.
+export function libraryChanges(state, menuId = state.activeMenuId) {
+  const menu = state.menus?.find(m => m.id === menuId);
+  if (!menu?.source) return [];
+  return state.menu.filter(i => i.menuId === menuId).flatMap(item => {
+    const original = menu.source.items.find(s => sameName(s.name.slice(0, 60), item.name));
+    return original && original.price !== item.price ? [{ name: original.name, category: original.category, price: item.price, before: original.price }] : [];
+  });
+}
+
 export function newGroup({ id, code, name, memberId, memberName, roundId }) {
   assert(validCode(code), 'Invalid room code.');
   return {
@@ -140,9 +168,17 @@ export function reduce(state, intent) {
       assert(s.menus.length < 20, 'A group can keep up to 20 menus.');
       const name = text(p.name, 60, 'Menu name');
       assert(!s.menus.some(m => sameName(m.name, name)), 'A menu with that name already exists.');
-      s.menus.push({ id: p.id, name });
+      const source = menuSource(p.source);
+      s.menus.push(source ? { id: p.id, name, source } : { id: p.id, name });
       // The first menu becomes the round's menu automatically: no extra tap.
       if (!s.activeMenuId) s.activeMenuId = p.id;
+      break;
+    }
+    case 'menu.source': {
+      const menu = s.menus.find(m => m.id === p.id);
+      assert(menu, 'That menu was removed.');
+      const source = menuSource(p.source);
+      if (source) menu.source = source; else delete menu.source;
       break;
     }
     case 'menu.rename': {

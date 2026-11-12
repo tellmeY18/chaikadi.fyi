@@ -1,7 +1,9 @@
 import { h, render, Component } from '../vendor/preact.module.js';
 import htm from '../vendor/htm.module.js';
-import { CATEGORIES, uid, funGroup, validCode } from './config.js';
-import { costs, debts, activeItems, activeMenu } from './state.js';
+import { CATEGORIES, uid, funGroup, validCode, DATA_BASE_URL, DATA_REPO_URL, SUGGEST_ENDPOINT } from './config.js';
+import { costs, debts, activeItems, activeMenu, libraryChanges } from './state.js';
+import { buildSuggestion, suggestionIssueUrl, sendSuggestion } from './data.js';
+import { LibrarySheet } from './library-ui.js';
 import { drawQR, scanQR } from './qr.js';
 import { t, money } from './strings.js';
 import { Icon, Sheet, Modal, CodeInput, Empty } from './components.js';
@@ -259,7 +261,7 @@ class App extends Component {
         ${this.state.editing && html`<div class="actions"><button onClick=${() => this.open({ kind: 'menuName', menu: viewing })}>${t('rename')}</button><button class="danger" disabled=${locked || isActive && !canChoose} onClick=${() => this.confirm(t('deleteMenuConfirm', viewing.name), t('delete'), () => this.action('menu.remove', { id: viewing.id }))}><${Icon} name="alert"/>${t('deleteMenu')}</button></div>`}</div>`}
       ${locked && html`<p class="banner warning"><${Icon} name="lock"/>${t('menuLocked')}</p>`}
       ${!items.length && html`<${Empty} text=${t('emptyMenu')} icon="menu"/>`}
-      <div class="actions menu-tools"><button class="primary" disabled=${locked} onClick=${() => this.open({ kind: 'scan', menuId: viewing?.id })}><${Icon} name="camera"/>${t('scanMenu')}</button><button disabled=${locked} onClick=${() => this.open({ kind: 'item', menuId: viewing?.id })}><${Icon} name="plus"/>${t('add')}</button></div>
+      <div class="actions menu-tools"><button class="primary" disabled=${locked} onClick=${() => this.open({ kind: 'scan', menuId: viewing?.id })}><${Icon} name="camera"/>${t('scanMenu')}</button><button disabled=${locked} onClick=${() => this.open({ kind: 'item', menuId: viewing?.id })}><${Icon} name="plus"/>${t('add')}</button><button onClick=${() => this.open({ kind: 'library' })}><${Icon} name="book"/>${t('library')}</button></div>
       ${!items.length && html`<button class="quiet" disabled=${locked} onClick=${() => this.run(async () => { const r = await this.props.store.presets(viewing?.id); if (r.menuId) show(r.menuId); })}>${t('commonItems')}</button>`}
       ${CATEGORIES.map(category => {
         const list = items.filter(i => i.category === category);
@@ -320,7 +322,7 @@ class App extends Component {
           ${person.id === s.group.ordererId ? html`<small>${t('ownShare')}</small>` : orderer && locked && person.participating ? html`<button aria-label=${`${person.name}: ${t(s.round.payments[person.id] ? 'paid' : 'unpaid')}`} aria-pressed=${!!s.round.payments[person.id]} class=${`paid-toggle ${s.round.payments[person.id] ? 'paid' : ''}`} onClick=${() => this.action('payment.set', { id: person.id, paid: !s.round.payments[person.id] })}>${t(s.round.payments[person.id] ? 'paid' : 'unpaid')}</button>` : html`<small class=${s.round.payments[person.id] ? 'paid' : ''}>${person.participating ? t(s.round.payments[person.id] ? 'paid' : 'unpaid') : '—'}</small>`}</div></li>`)}</ul>
         <div class="total-bar grand-total"><span>${t('finalTotal')}</span><strong>${money(totals.actualTotal, s.group.currency)}</strong></div>
       </section>
-      ${orderer && locked && html`<button class="primary full" onClick=${() => this.confirm(t('finishConfirm'), t('finish'), () => this.action('round.finish', { nextRoundId: uid(), date: new Date().toISOString() }, t('roundSaved')))}>${t('finish')}</button>`}
+      ${orderer && locked && html`<button class="primary full" onClick=${() => this.confirm(t('finishConfirm'), t('finish'), () => this.finishRound(s))}>${t('finish')}</button>`}
     </section>`;
   }
   history(v) {
@@ -338,6 +340,11 @@ class App extends Component {
   settings(v) {
     const s = v.state, store = this.props.store;
     return html`<section>${heading(t('settings'))}
+      <section class="stack"><h2>${t('libraryTitle')}</h2><p>${t('libraryAttribution')} <a href=${`${DATA_REPO_URL}#readme`} target="_blank" rel="noopener noreferrer">${t('libraryReadme')}</a></p>
+        <form class="stack" onSubmit=${e => { e.preventDefault(); const url = fields(e).url; this.run(async () => { await store.setDataBaseUrl(url); store.toast(t('librarySaved')); }); }}>
+          <label>${t('libraryUrl')}<input name="url" type="url" inputmode="url" required spellcheck=${false} autocapitalize="off" defaultValue=${v.config.dataBaseUrl || DATA_BASE_URL} key=${v.config.dataBaseUrl || DATA_BASE_URL}/></label>
+          <div class="actions"><button>${t('saveAddress')}</button>${v.config.dataBaseUrl && html`<button type="button" class="quiet" onClick=${() => this.run(async () => { await store.setDataBaseUrl(null); store.toast(t('librarySaved')); })}>${t('resetLibrary')}</button>`}</div>
+        </form></section>
       <section><h2>${t('appearance')}</h2><label>${t('theme')}<select value=${v.preferences.theme} onChange=${e => { const theme = e.currentTarget.value; this.run(() => store.preferences({ theme })); }}>${['auto', 'light', 'dark'].map(theme => html`<option value=${theme}>${t(theme)}</option>`)}</select></label></section>
       ${s && html`<form class="stack" onSubmit=${e => { e.preventDefault(); this.action('member.rename', { name: fields(e).name }); }}><label>${t('displayName')}<input name="name" required maxlength="30" defaultValue=${v.identity.name}/></label><button>${t('saveName')}</button></form>`}
       ${v.role === 'host' && s && html`<form class="stack" onSubmit=${e => { e.preventDefault(); this.action('group.currency', { currency: fields(e).currency }); }}><h2>${t('groupCurrency')}</h2><label>${t('currency')}<input name="currency" required maxlength="8" defaultValue=${s.group.currency} list="currencies"/><datalist id="currencies"><option value="Rs"/><option value="₹"/><option value="$"/><option value="€"/></datalist></label><p class="muted">${t('currencyHint')}</p><button disabled=${s.group.status !== 'open'}>${t('saveCurrency')}</button></form>`}
@@ -349,6 +356,26 @@ class App extends Component {
       ${s && html`<section class="stack"><h2>${t('localData')}</h2><button onClick=${() => this.download(store.backup())}>${t('export')}</button><p class="muted">${t('exportHint')}</p><button class="danger" onClick=${() => this.confirm(t('leaveConfirm'), t('leave'), () => store.leave())}><${Icon} name="alert"/>${t('leave')}</button></section>`}
       <details><summary>${t('offlineHelp')}</summary><p>${t('installHint')}</p><p>${t('installSteps')}</p><p>${t('offlineText')}</p></details>
     </section>`;
+  }
+  async finishRound(s) {
+    // Offer (never send) library price updates after the round is archived.
+    const source = activeMenu(s)?.source, changes = libraryChanges(s);
+    const ok = await this.action('round.finish', { nextRoundId: uid(), date: new Date().toISOString() }, t('roundSaved'));
+    if (ok && source && !source.sample && changes.length) this.open({ kind: 'share', source, changes });
+  }
+  // Suggest a library update: POST to SUGGEST_ENDPOINT when configured, else
+  // open a prefilled GitHub issue form. Only place, items, prices and date.
+  async suggest({ placeId, city, name, changes }) {
+    const now = new Date();
+    const seen = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    try {
+      const suggestion = buildSuggestion({ placeId, city, name, changes, seen });
+      if (SUGGEST_ENDPOINT && suggestion.changes.length) { await sendSuggestion(suggestion, SUGGEST_ENDPOINT); this.props.store.toast(t('shareSent')); return; }
+      const a = document.createElement('a');
+      a.href = suggestionIssueUrl(suggestion, DATA_REPO_URL); a.target = '_blank'; a.rel = 'noopener noreferrer';
+      a.click();
+      this.props.store.toast(t('shareOpened'));
+    } catch (error) { this.props.store.notice(error.message); }
   }
   download(text) {
     const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
@@ -366,6 +393,10 @@ class App extends Component {
       try { const url = new URL(text), code = url.searchParams.get('room'); if (![location.hostname, 'chaikadi.fyi', 'chaikadi.pages.dev'].includes(url.hostname) || !validCode(code)) throw new Error(); close(); this.run(() => store.join(code, this.homeForm?.elements.name?.value || v.identity.name)); }
       catch { store.notice(t('badQR')); }
     }}/>${error}<//>`;
+    if (p.kind === 'library') return html`<${LibrarySheet} store=${store} view=${v} onClose=${close} suggest=${x => this.suggest(x)} onImported=${id => { this.setState({ viewMenu: id, editing: false }); close(); }}/>`;
+    if (p.kind === 'share') return html`<${Sheet} title=${t('shareTitle')} onClose=${close}><p>${t('shareIntro')}</p><p class="caption">${p.source.name}</p>
+      <ul class="item-list">${p.changes.map(c => html`<li>${leader(c.name, money(c.price, s.group.currency))}<small>${t('priceWas', money(c.before, s.group.currency), money(c.price, s.group.currency))}</small></li>`)}</ul>
+      <div class="sheet-actions"><button class="primary" onClick=${close}>${t('notNow')}</button><button onClick=${() => { close(); this.suggest({ placeId: p.source.placeId, city: p.source.city, name: p.source.name, changes: p.changes.map(c => ({ name: c.name, category: c.category, price: c.price / 100 })) }); }}><${Icon} name="external"/>${t('shareAction')}</button></div><//>`;
     if (p.kind === 'copy') return html`<${Sheet} title=${t('selectCopy')} onClose=${close}><textarea readonly rows="8" value=${p.text} onFocus=${e => e.currentTarget.select()} autofocus></textarea><button class="primary" onClick=${close}>${t('done')}</button><//>`;
     if (p.kind === 'locked') return html`<${Sheet} title=${t('locked')} onClose=${close} className="lock-reveal"><${Icon} name="tumbler" size=${48}/><div class="typed-lock" aria-hidden="true">${t('locked')}</div><div class="lock-rule" aria-hidden="true"></div><p>${t('lockHelp')}</p><button class="primary" onClick=${close}>${t('done')}</button><//>`;
     if (p.kind === 'shuffle') {
