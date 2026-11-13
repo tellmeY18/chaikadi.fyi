@@ -177,6 +177,8 @@ section > section, form + form, form + details, details + section { margin-top: 
 .stepper output { display: grid; place-items: center; min-width: 48px; min-height: 48px; border: var(--rule); font-size: 1rem; }
 .selected .stepper output { font-weight: 700; }
 .item-note { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 1rem; }
+.note-button { min-height: 48px; padding: 8px 12px; gap: 8px; border-style: dashed; font-weight: 400; justify-content: flex-start; text-align: left; overflow-wrap: anywhere; }
+.note-button.has-note { border-style: solid; font-weight: 700; }
 .total-bar { border-top: 4px double var(--ink); padding-top: 14px; margin: 24px 0; }
 
 /* Receipt: paper stock, perforated edges, soft lift. All text ink black. */

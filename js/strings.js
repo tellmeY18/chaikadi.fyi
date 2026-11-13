@@ -87,6 +87,7 @@ const en = {
   pickTitle: 'My picks', fromMenu: name => `From ${name}`, pickHint: '',
   lockedPicks: 'Order locked.', quantity: (name, n) => `${name}, quantity ${n}`,
   addOne: n => `Add one ${n}`, removeOne: n => `Remove one ${n}`, itemNote: 'Item note', addNote: n => `Add a note for ${n}`,
+  noteShort: 'Add note', editNoteFor: (n, note) => `Note for ${n}: ${note}. Edit note`,
   notePlaceholder: 'Less sugar, extra chutney…', snackPlaceholder: 'Which snack? e.g. 2 samosa, 1 vada', saveNote: 'Save note', noteSaved: 'Note saved.',
   pickFirst: 'Pick it first.', subtotal: 'You',
   undecided: 'Surprise me', suggestion: 'Try this', shuffle: 'Choosing…', reroll: 'Again', acceptPick: 'Add',
