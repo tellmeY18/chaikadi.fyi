@@ -9,11 +9,12 @@ runtime CDN dependencies.
 Preact + htm, vendored locally; state, persistence and networking are plain ES
 modules independent of the UI framework.
 
-The visual source of truth is [DESIGN.md](DESIGN.md): monochrome, locally hosted
-Courier Prime, square controls and receipt-like rows. The four bottom tabs are
+The visual source of truth is [DESIGN.md](DESIGN.md): a black-and-white wireframe
+in Atkinson Hyperlegible Mono, semantic crayon colour, and paper receipts in
+Courier Prime. The four bottom tabs are
 Menu, My picks, Order and Costs. Group, History and Settings are in the app bar
-menu; the compact room code also opens Group. Theme follows the device, with
-persisted Light / Dark / Follow system overrides in Settings.
+menu; the online count also opens Group. Two themes, Light (white) and Dark
+(pitch black); the first run follows the device.
 
 ## Run locally
 
@@ -86,7 +87,7 @@ current one (see `js/ui.js`).
    records (or an ALIAS/ANAME to `<username>.github.io` if supported). Follow
    GitHub's custom-domain verification instructions.
 5. After GitHub provisions the certificate, enable **Enforce HTTPS**.
-6. Open the custom domain and wait for **Offline app ready** in the footer.
+6. Open the custom domain once so the service worker caches the app.
 
 GitHub project-subdirectory preview URLs can load the relative shell, but invites
 still point at the production domain. Use the actual custom domain for group tests.
@@ -99,6 +100,15 @@ still point at the production domain. Use the actual custom domain for group tes
 4. Enable/provision HTTPS and redirect HTTP to HTTPS.
 
 ### Cloudflare Pages
+
+Pushes to `main` deploy automatically through `.github/workflows/deploy.yml`:
+unit tests run first, then only the runtime files (`index.html`, `styles.css`,
+`manifest.json`, `sw.js`, `_headers`, `js/`, `vendor/`, `fonts/`, `icons/`) are
+uploaded to the Pages project `chaikadi`. Add two repository secrets once:
+`CLOUDFLARE_API_TOKEN` (a token with **Cloudflare Pages: Edit**) and
+`CLOUDFLARE_ACCOUNT_ID`. Pull requests run the tests only.
+
+To set the project up from scratch instead:
 
 1. Create a Pages project from the repository, framework preset **None**.
 2. No build command; output directory `.` (the repository root).
@@ -125,8 +135,8 @@ foreground (at most every 30 minutes) and from **Settings → Check for updates*
 When one is ready, a banner offers **Update now**: the app saves everything,
 activates the new worker and restarts the page once (running new JavaScript
 requires that). Groups, picks, history and queued changes are restored and
-room-code connections reconnect; manual pairings must pair again (the banner
-says so when one is active). Tested by `node tests/update.mjs`.
+room-code connections reconnect.
+Tested by `node tests/update.mjs`.
 
 ## Install on phones
 
@@ -134,7 +144,7 @@ says so when one is active). Tested by `node tests/update.mjs`.
   Home Screen → Add. Launch the new Chaikadi icon.
 - **Android (Chrome)**: visit the HTTPS site → browser menu → Install app / Add to
   Home screen. The exact menu label varies by Chrome version.
-- Visit online once and wait for **Offline app ready** before disconnecting.
+- Visit online once so the app shell is cached.
   The service worker precaches all UI, scripts, dependencies and icons.
 - Create or join from the environment you will keep using. Safari and a
   home-screen app may have separate storage on some iOS versions; do not assume
@@ -304,38 +314,14 @@ Data repo setup, deployment and the library test plan are in
   Twilio STUN. PeerJS's bundled default TURN configuration is **overridden** by
   the explicitly supplied STUN-only ICE list.
 - Invalid/expired/unreachable codes, name conflicts and capacity errors produce
-  human-readable messages. The manual pairing option is always available and
-  highlighted when signaling fails.
+  human-readable messages with a Retry button.
 
-### B. Manual pairing (no internet)
+### QR codes
 
-1. Both devices join the **same local Wi-Fi**. Internet access may be disabled.
-   Both must have loaded/installed Chaikadi online beforehand.
-2. Host chooses **Create offline · pair manually**, or uses an existing group.
-3. Host opens **Add person manually → Create offer**. Wait for ICE gathering.
-4. Joiner chooses **Join group**, enters a name, and taps **No internet? Pair
-   manually**. Scan or paste the host's offer → **Create answer**.
-5. Joiner shows/copies their answer. Host scans or pastes it → **Connect person**.
-6. Wait for **Connected!** and the new online member. Close the panels. Repeat
-   with a fresh offer for every additional person.
-
-This uses raw `RTCPeerConnection({ iceServers: [] })`: no signaling, STUN or TURN
-calls for the manual exchange. We wait for ICE gathering to finish, strip a few
-irrelevant SDP lines, and use deflate compression where `CompressionStream`
-exists. Uncompressed `CK1.n.…` text is the fallback; **Compatibility text** can
-be selected when the receiving browser cannot decompress. `CK1.z.…` is deflated.
-
-QR generation and camera decoding are local (`qrcode-generator`, `jsQR`), using
-`getUserMedia`. No `BarcodeDetector`, Bluetooth, sharing API, or external QR
-service. Codes over 1,500 characters use the **text-only fallback** instead of
-an unreliable dense QR. Copy/paste can be transferred using any channel the
-users already have, including chat, AirDrop or Nearby Share; the app does not
-integrate with or invoke those services. Camera denial always leaves text input.
-
-Manual SDP is valid only for the live pending connection. A refresh, closed
-pending panel, or failed channel needs a **new offer and answer**. Keep the
-pairing panels open until connected. A manual-only group's visible room code
-becomes discoverable only when its host also registers with signaling.
+Show QR and Scan QR carry only the room link. Generation and camera decoding are
+local (`qrcode-generator`, `jsQR`); camera denial still leaves the four-box code.
+Manual (offline, offer/answer) pairing was removed in v0.3: every connection uses
+the room code over PeerJS.
 
 ### Reconnect, offline edits and authority
 
@@ -358,9 +344,7 @@ becomes discoverable only when its host also registers with signaling.
   finished, item was removed, privileges changed, or picks were locked. Rejected
   intents are removed with a visible message. Locks always win at the host.
 - A heartbeat marks lost peers offline after about 25 seconds. Foregrounding
-  triggers room-code reconnect and full sync. Manual channels cannot redo their
-  handshake automatically; re-pair if disconnected. A room reconnect is also
-  attempted if internet and the saved room code are available.
+  triggers room-code reconnect and full sync.
 - Host offline means edits cannot become shared/authoritative. When the same
   host returns, its locally saved group resumes. **No host migration**.
 - Dropping the internet does not require dropping a live local peer connection.
@@ -395,7 +379,6 @@ Paste `signaling` and `iceServers` into the separate JSON fields in Settings.
 Use a **PeerServer-compatible** signaling service with HTTPS/WSS, correct
 WebSocket proxying and origin configuration. A generic WebSocket server/worker
 is not sufficient. All devices need the same signaling host/port/path/key.
-Manual pairing deliberately ignores this config and always uses `iceServers: []`.
 Changes affect new connections; use **Retry room connection** when ready.
 
 TURN credentials shipped in static source or entered locally are visible to
@@ -422,11 +405,9 @@ or shipped with this MVP.
   pending offline changes per device, and a 2,000-intent deduplication window.
   Full peer snapshots are bounded to 4 MiB; very large multi-round histories
   require export and starting a fresh group. Data is never silently truncated.
-- Room-code handshakes need brief internet access; manual pairing needs a
-  shared local network and working local candidate resolution.
+- Room-code handshakes need brief internet access.
 - Strict corporate networks, guest Wi-Fi isolation and symmetric NAT can block
-  direct peer connections. A TURN server helps room mode; manual mode cannot
-  bypass network isolation.
+  direct peer connections. A TURN server helps.
 - Public PeerJS cloud is best-effort, rate-limited and outside our control.
 - iOS suspends background tabs and may drop channels. Keep the host foregrounded;
   automatic room reconnect runs on return. No Wake Lock or platform-specific API.
@@ -458,9 +439,11 @@ chaikadi.fyi/
 ├── _headers                   Cloudflare cache / response headers
 ├── TEST_PLAN.md               laptop + iPhone + Android acceptance plan
 ├── fonts/
+│   ├── atkinson-hyperlegible-mono-latin.woff2
 │   ├── courier-prime-400-latin.woff2
 │   ├── courier-prime-700-latin.woff2
 │   ├── noto-serif-malayalam.woff2
+│   ├── Atkinson-Hyperlegible-Mono.OFL.txt
 │   ├── Courier-Prime.OFL.txt
 │   ├── Noto-Serif-Malayalam.OFL.txt
 │   └── README.md
@@ -497,7 +480,7 @@ chaikadi.fyi/
 │   ├── ocr/                   locally vendored WASM, worker and English model
 │   └── README.md              pinned versions and provenance
 ├── tests/
-│   ├── state.test.js          reducer, arithmetic, pairing codec, fallback
+│   ├── state.test.js          reducer, arithmetic, config, fallback
 │   ├── protocol.test.js       authority, identity, replay and offline sync
 │   ├── menus.test.js          multi-menu selection, migration and preservation
 │   ├── design.test.js         contrast, font budget and money formatting
@@ -505,7 +488,7 @@ chaikadi.fyi/
 │   ├── data.test.js           library cache-first, hash mismatch, offline, import
 │   ├── library.mjs            library browser flow incl. opt-in share
 │   ├── fixtures/data/         manifest + bundle copied from chaikadi-data build
-│   ├── browser.mjs            optional real-browser / manual-WebRTC smoke
+│   ├── browser.mjs            optional real-browser smoke (needs updating for v0.3)
 │   ├── room.mjs               optional public-cloud / room-reconnect smoke
 │   ├── scan.mjs               optional real-browser menu-scan test
 │   └── ingest.test.js         menu text parser / OCR cleanup unit tests

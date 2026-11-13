@@ -1,6 +1,6 @@
 import { h, render, Component } from '../vendor/preact.module.js';
 import htm from '../vendor/htm.module.js';
-import { CATEGORIES, uid, funGroup, validCode, DATA_BASE_URL, DATA_REPO_URL, SUGGEST_ENDPOINT, APP_VERSION } from './config.js';
+import { CATEGORIES, uid, funGroup, validCode, DATA_REPO_URL, SUGGEST_ENDPOINT, APP_VERSION } from './config.js';
 import { costs, debts, activeItems, activeMenu, libraryChanges } from './state.js';
 import { buildSuggestion, suggestionIssueUrl, sendSuggestion } from './data.js';
 import { LibrarySheet } from './library-ui.js';
@@ -12,8 +12,13 @@ const html = htm.bind(h);
 const fields = event => Object.fromEntries(new FormData(event.currentTarget));
 const date = value => new Date(value).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
 const nameOf = (state, id) => state.members.find(m => m.id === id)?.name || t('formerMember');
-const leader = (label, value) => html`<div class="leader"><span>${label}</span><span class="dots" aria-hidden="true"></span><strong class="amount">${value}</strong></div>`;
+const leader = (label, value, cls = '') => html`<div class=${`leader ${cls}`}><span>${label}</span><span class="dots" aria-hidden="true"></span><strong class="amount">${value}</strong></div>`;
 const heading = (title, description) => html`<div class="section-heading"><h1>${title}</h1>${description && html`<p>${description}</p>`}</div>`;
+// Receipts are paper: Courier Prime, ink black, perforated edges. Never inverted.
+const receipt = (children, key) => html`<div class="receipt" key=${key}><div class="receipt-paper">${children}</div></div>`;
+const systemDark = () => typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches;
+// Two themes only. Older saved 'auto' resolves once to the device setting.
+export const resolvedTheme = theme => theme === 'dark' || theme === 'light' ? theme : systemDark() ? 'dark' : 'light';
 function cents(value) {
   if (!/^\d+(\.\d{1,2})?$/.test(String(value || '0'))) throw new Error(t('invalidAmount'));
   return Math.round(Number(value || 0) * 100);
@@ -48,39 +53,6 @@ class Scanner extends Component {
   componentWillUnmount() { this.closed = true; this.stop?.(); }
   render() { return html`<div><video ref=${el => this.video = el} autoplay playsinline muted></video><p class="muted">${t('cameraHint')}</p></div>`; }
 }
-class Pairing extends Component {
-  constructor(props) { super(props); this.state = { scan: false, input: '' }; }
-  async copy(text) {
-    try { await navigator.clipboard.writeText(text); this.props.store.toast(t('copied')); }
-    catch { this.output?.focus(); this.output?.select(); this.props.store.toast(t('copyHint')); }
-  }
-  render({ view, store, run }) {
-    const p = view.pairing;
-    const accept = text => { this.setState({ scan: false, input: text }); run(() => store.pair(text)); };
-    return html`<${Sheet} title=${t('pairingTitle')} onClose=${() => store.closeManual()}>
-      ${view.notice && html`<p class="banner error" role="alert"><strong>${t('error')}</strong> ${view.notice}</p>`}
-      ${view.toast && html`<p role="status">${view.toast}</p>`}
-      <p>${t('pairingIntro')}</p><p class="muted">${t('oneOffer')}</p>
-      ${p.step === 'host-start' && html`<button class="primary" disabled=${p.busy} onClick=${() => run(() => store.offer())}>${p.busy ? t('gathering') : t('createOffer')}</button>`}
-      ${p.step === 'host-answer' && html`<h3>${t('offerStep')}</h3>`}
-      ${p.step === 'join-offer' && html`<h3>${t('scanOffer')}</h3>`}
-      ${p.step === 'join-answer' && html`<h3>${t('answerStep')}</h3>`}
-      ${p.text && html`<${QR} text=${p.text}/><label>${t('pairingText')}<textarea ref=${el => this.output = el} readonly rows="4" value=${p.text} onFocus=${e => e.currentTarget.select()}></textarea></label>
-        <div class="actions"><button onClick=${() => this.copy(p.text)}><${Icon} name="copy"/>${t('copy')}</button><button class="quiet" onClick=${() => store.compatibility()}>${t('compatibility')}</button></div><p class="muted">${t('compatibilityHelp')}</p>`}
-      ${['host-answer', 'join-offer'].includes(p.step) && html`<section>
-        ${p.step === 'host-answer' && html`<h3>${t('scanAnswer')}</h3>`}
-        <button disabled=${p.busy} onClick=${() => this.setState({ scan: !this.state.scan })}><${Icon} name="qr"/>${this.state.scan ? t('stopCamera') : t('scanCamera')}</button>
-        ${this.state.scan && html`<${Scanner} onResult=${accept} onError=${message => { this.setState({ scan: false }); store.notice(message); }}/>`}
-        <form class="stack" onSubmit=${e => { e.preventDefault(); accept(this.state.input); }}>
-          <label>${t(p.step === 'host-answer' ? 'pasteAnswer' : 'pasteOffer')}<textarea required rows="4" value=${this.state.input} onInput=${e => this.setState({ input: e.currentTarget.value })} placeholder="CK1.…" autocapitalize="off" spellcheck=${false}></textarea></label>
-          <button class="primary" disabled=${p.busy}>${p.busy ? t('gathering') : t(p.step === 'host-answer' ? 'connectPerson' : 'createAnswer')}</button>
-        </form></section>`}
-      ${['waiting', 'join-answer'].includes(p.step) && html`<p role="status">${t(p.connected ? 'pairingConnected' : 'pairingWaiting')}</p>`}
-      <details><summary>${t('pairingTrouble')}</summary><p>${t('pairingTips')}</p></details>
-    <//>`;
-  }
-}
-
 class MenuScan extends Component {
   constructor(props) { super(props); this.state = { busy: false, progress: 0, label: '', result: null, error: '' }; }
   componentDidMount() { import('./ingest.js').then(m => m.prefetchOCR()).catch(() => {}); }
@@ -147,13 +119,10 @@ class App extends Component {
       const previous = this.state.view.state;
       const lockedNow = previous?.group.status === 'open' && view.state?.group.status === 'locked' && previous.round.id === view.state.round.id && view.state.group.ordererId === view.identity.id;
       this.setState({ view, ...(lockedNow ? { sheet: { kind: 'locked' } } : {}) });
-      const theme = view.preferences.theme;
-      if (theme === 'auto') delete document.documentElement.dataset.theme;
-      else document.documentElement.dataset.theme = theme;
-      this.updateThemeColor(theme);
+      this.applyTheme(view.preferences.theme);
     });
     this.media = window.matchMedia('(prefers-color-scheme: dark)');
-    this.themeChanged = () => this.updateThemeColor();
+    this.themeChanged = () => this.applyTheme(this.state.view.preferences.theme);
     this.media.addEventListener('change', this.themeChanged);
   }
   componentWillUnmount() { this.unsubscribe?.(); this.media?.removeEventListener('change', this.themeChanged); }
@@ -165,9 +134,11 @@ class App extends Component {
       import('./ingest.js').then(m => m.prefetchOCR()).catch(() => {});
     }
   }
-  updateThemeColor(theme = this.state.view.preferences.theme) {
-    const dark = theme === 'dark' || theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0A0A0A' : '#111111');
+  applyTheme(preference) {
+    const theme = resolvedTheme(preference);
+    document.documentElement.dataset.theme = theme;
+    try { localStorage.setItem('chaikadi-theme', theme); } catch { /* storage blocked */ }
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#000000' : '#FFFFFF');
   }
   go(tab) { this.setState({ appMenu: false, editing: false }); this.props.store.setTab(tab); window.scrollTo({ top: 0 }); }
   open(sheet) { this.setState({ sheet, formError: '' }); }
@@ -190,7 +161,7 @@ class App extends Component {
     this.copy(link, t('linkCopied'));
   }
   nameField(v) {
-    return html`<label>${t('yourName')}<span class="with-dice"><input key=${v.identity.name} aria-label=${t('yourName')} name="name" required maxlength="30" defaultValue=${v.identity.name} autocomplete="nickname"/><button type="button" class="icon-button" aria-label=${t('randomName')} onClick=${() => this.props.store.rerollName()}><${Icon} name="dice"/></button></span></label>`;
+    return html`<label>${t('yourName')}<span class="with-dice"><input key=${v.identity.name} name="name" required maxlength="30" defaultValue=${v.identity.name} autocomplete="nickname"/><button type="button" class="icon-button" aria-label=${t('randomName')} onClick=${() => this.props.store.rerollName()}><${Icon} name="dice"/></button></span></label>`;
   }
   home(v) {
     const store = this.props.store;
@@ -202,48 +173,46 @@ class App extends Component {
         this.run(() => store.join(code, this.homeForm?.elements.name?.value || v.identity.name));
       }
     };
-    return html`<section class="home">${heading(t('tagline'), t('homeIntro'))}
-      ${join ? html`<form ref=${el => this.homeForm = el} class="stack" onSubmit=${e => { e.preventDefault(); this.run(() => store.join(this.code || v.targetCode, fields(e).name, e.submitter?.value === 'manual')); }}>
-        <button type="button" class="quiet" onClick=${() => { this.run(() => store.resetConnection()); this.setState({ homeMode: 'create' }); }}>${t('back')}</button>
+    if (join) return html`<section class="home">
+      <button type="button" class="back" onClick=${() => { this.run(() => store.resetConnection()); this.setState({ homeMode: 'create' }); }}><${Icon} name="back"/>${t('back')}</button>
+      ${heading(t('join'))}
+      <form ref=${el => this.homeForm = el} class="stack" onSubmit=${e => { e.preventDefault(); this.run(() => store.join(this.code || v.targetCode, fields(e).name)); }}>
         <${CodeInput} value=${v.targetCode} onInput=${joinNow}/>
         ${v.role === 'member' && v.targetCode && html`<p role="status">${t('joining', v.targetCode)}</p>`}
         ${this.nameField(v)}
         <button class="primary">${t('joinAction')}</button>
-        <button type="button" onClick=${() => this.open({ kind: 'roomScan' })}><${Icon} name="qr"/>${t('scanQR')}</button>
-        <button class="quiet" value="manual">${t('pair')}</button>
-      </form>` : html`<form class="stack" onSubmit=${e => { e.preventDefault(); const f = fields(e); this.run(() => store.create(f.group, f.name, e.submitter?.value === 'manual')); }}>
+        <button type="button" class="outbound" onClick=${() => this.open({ kind: 'roomScan' })}><${Icon} name="qr"/>${t('scanQR')}</button>
+      </form></section>`;
+    return html`<section class="home">${heading(t('tagline'))}
+      <form class="stack" onSubmit=${e => { e.preventDefault(); const f = fields(e); this.run(() => store.create(funGroup(), f.name)); }}>
+        ${this.nameField(v)}
         <button class="primary">${t('create')}</button>
         <button type="button" onClick=${() => this.setState({ homeMode: 'join' })}>${t('join')}</button>
-        <button class="quiet" value="manual">${t('pair')}</button>
-        <details class="names"><summary>${t('names')}</summary><p class="muted">${t('homeHint')}</p>
-          <div class="stack"><label>${t('groupName')}<span class="with-dice"><input key=${this.state.groupName} aria-label=${t('groupName')} name="group" required maxlength="60" defaultValue=${this.state.groupName}/><button type="button" class="icon-button" aria-label=${t('randomGroup')} onClick=${() => this.setState({ groupName: funGroup() })}><${Icon} name="dice"/></button></span></label>${this.nameField(v)}</div>
-        </details>
-        <p class="caption">${this.state.groupName}<br/>${v.identity.name}</p>
-      </form>`}
+      </form>
+      ${!v.preferences.installDismissed && !matchMedia('(display-mode: standalone)').matches && html`<aside class="install-hint"><details><summary>${t('install')}</summary><p>${t('installSteps')}</p></details><button class="quiet" onClick=${() => this.run(() => store.preferences({ installDismissed: true }))}>${t('installDone')}</button></aside>`}
     </section>`;
   }
   lobby(v) {
-    const s = v.state, host = v.role === 'host', store = this.props.store;
+    const s = v.state, host = v.role === 'host';
     const link = `${location.origin}/?room=${s.group.roomCode}`;
-    return html`<section>${heading(s.group.name, `${t('countPeople', s.members.length)} · ${t(s.group.status === 'open' ? 'open' : 'locked')}`)}
-      <button class="room-plate" aria-label=${`${t('roomCode')} ${s.group.roomCode}. ${t('copy')}`} onClick=${() => this.copy(s.group.roomCode, t('codeCopied'))}><span class="plate-label">${t('roomCode')}</span><span class="plate-letters" aria-hidden="true">${[...s.group.roomCode].map(c => html`<span>${c}</span>`)}</span></button>
-      <p class="muted">${t('inviteHint')}</p>
-      <div class="actions"><button onClick=${() => this.share(link)}><${Icon} name="share"/>${t('share')}</button><button onClick=${() => this.setState({ showQR: !this.state.showQR })}><${Icon} name="qr"/>${t(this.state.showQR ? 'hideQR' : 'showQR')}</button></div>
-      ${this.state.showQR && html`<${QR} text=${link}/><a class="share-link" href=${link}>${link}</a>`}
+    return html`<section>${heading(s.group.name)}
+      <button class="room-plate" aria-label=${`${t('roomCode')} ${[...s.group.roomCode].join(' ')}. ${t('copy')}`} onClick=${() => this.copy(s.group.roomCode, t('codeCopied'))}><span class="plate-label">${t('roomCode')}</span><span class="plate-letters crayon crayon-yellow" aria-hidden="true">${[...s.group.roomCode].map(c => html`<span>${c}</span>`)}</span></button>
+      <div class="actions two"><button class="outbound" onClick=${() => this.share(link)}><${Icon} name="share"/>${t('share')}</button><button class="outbound" aria-expanded=${this.state.showQR} onClick=${() => this.setState({ showQR: !this.state.showQR })}><${Icon} name="qr"/>${t(this.state.showQR ? 'hideQR' : 'showQR')}</button></div>
+      ${this.state.showQR && html`<${QR} text=${link}/>`}
       ${host && !v.roomReady && html`<p class="banner warning"><${Icon} name="alert"/>${t('codeUnavailable')}</p>`}
       <section><h2>${t('members')}</h2>
-        ${s.members.length === 1 && html`<p class="muted">${t('alone')}</p>`}
-        <ul class="people">${s.members.map((m, i) => {
+        ${s.members.length === 1 && html`<p>${t('alone')}</p>`}
+        <ul class="people">${s.members.map(m => {
           const online = m.online && (host || v.hostOnline);
-          return html`<li key=${m.id}><div class=${`avatar avatar-${i % 6}`} aria-hidden="true">${[...m.name][0]}</div><div class="person-detail"><strong>${m.name} ${m.id === v.identity.id ? t('you') : ''}</strong>
-            <div class="role-tags">${m.id === s.group.hostId && html`<span>${t('host')}</span>`}${m.id === s.group.ordererId && html`<strong>${t('orderer')}</strong>`}</div>
-            <small class=${online ? 'presence online' : 'presence'}>${online ? '●' : '○'} ${t(online ? 'online' : 'offline')}</small></div>
-            ${host && m.id !== s.group.hostId && html`<details class="member-actions"><summary>${t('edit')}</summary><div class="stack">${m.id !== s.group.ordererId && html`<button onClick=${() => this.action('orderer.set', { id: m.id })}>${t('makeOrderer')}</button>`}<button class="danger" disabled=${s.group.status !== 'open'} onClick=${() => this.confirm(t('removePerson', m.name), t('remove'), () => this.action('member.remove', { id: m.id }))}><${Icon} name="alert"/>${t('remove')}</button></div></details>`}
+          return html`<li key=${m.id}><div class="avatar" aria-hidden="true">${[...m.name][0]}</div><div class="person-detail"><strong>${m.name} ${m.id === v.identity.id ? t('you') : ''}</strong>
+            ${(m.id === s.group.hostId || m.id === s.group.ordererId) && html`<div class="role-tags">${m.id === s.group.hostId && html`<span class="tag crayon crayon-green">${t('host')}</span>`}${m.id === s.group.ordererId && html`<span class="tag crayon crayon-green">${t('orderer')}</span>`}</div>`}</div>
+            <span class=${`presence ${online ? 'online crayon-green' : ''}`} role="img" aria-label=${t(online ? 'online' : 'offline')}></span>
+            ${host && m.id !== s.group.hostId && html`<button class="icon-button" aria-label=${`${t('edit')} ${m.name}`} onClick=${() => this.open({ kind: 'member', member: m })}><${Icon} name="dots"/></button>`}
           </li>`;
         })}</ul>
         ${host && s.group.ordererId !== s.group.hostId && html`<button onClick=${() => this.action('orderer.set', { id: s.group.hostId })}>${t('hostOrders')}</button>`}
       </section>
-      <div class="stack"><button class="primary" onClick=${() => this.go('menu')}>${t('goMenu')}</button><button class="quiet" onClick=${() => store.showManual()}>${t('pair')}</button></div>
+      <button class="primary full" onClick=${() => this.go(s.picks.some(p => p.memberId === v.identity.id) || s.menu.length ? 'picks' : 'menu')}>${t('goMenu')}</button>
     </section>`;
   }
   menu(v) {
@@ -253,112 +222,111 @@ class App extends Component {
     const canChoose = [s.group.hostId, s.group.ordererId].includes(v.identity.id);
     const items = s.menu.filter(i => i.menuId === viewing?.id);
     const show = id => this.setState({ viewMenu: id, editing: false });
-    return html`<section>${heading(t('menus'), t('noMenus'))}
-      ${s.menus.length > 0 && html`<div class="menu-chips" aria-label=${t('menus')}>${s.menus.map(m => html`<button key=${m.id} class=${`chip ${viewing?.id === m.id ? 'active' : ''}`} aria-pressed=${viewing?.id === m.id} onClick=${() => show(m.id)}>${m.id === s.activeMenuId ? '✓ ' : ''}${m.name}</button>`)}</div>`}
-      <div class="actions"><button onClick=${() => this.open({ kind: 'menuName' })}><${Icon} name="plus"/>${t('newMenu')}</button>${viewing && html`<button aria-pressed=${this.state.editing} onClick=${() => this.setState({ editing: !this.state.editing })}><${Icon} name="edit"/>${t(this.state.editing ? 'done' : 'editMenu')}</button>`}</div>
-      ${viewing && html`<div class="menu-head"><h2>${viewing.name}</h2><p class="caption">${t('itemCount', items.length)} · ${isActive ? `✓ ${t('currentMenu')}` : t('notCurrent')}</p>
-        ${!isActive && (canChoose ? html`<button disabled=${s.group.status !== 'open' || !items.length} onClick=${() => { const use = () => this.action('menu.activate', { id: viewing.id }); if (s.picks.length) this.confirm(t('switchMenu', viewing.name), t('useMenu'), use); else use(); }}>${t('useMenu')}</button>` : html`<p class="muted">${t('ordererChooses')}</p>`)}
-        ${this.state.editing && html`<div class="actions"><button onClick=${() => this.open({ kind: 'menuName', menu: viewing })}>${t('rename')}</button><button class="danger" disabled=${locked || isActive && !canChoose} onClick=${() => this.confirm(t('deleteMenuConfirm', viewing.name), t('delete'), () => this.action('menu.remove', { id: viewing.id }))}><${Icon} name="alert"/>${t('deleteMenu')}</button></div>`}</div>`}
+    return html`<section>
+      <div class="section-heading with-tools"><h1>${t('menu')}</h1><div class="tools">
+        ${viewing && html`<button class="icon-button" aria-label=${t(this.state.editing ? 'done' : 'editMenu')} aria-pressed=${this.state.editing} onClick=${() => this.setState({ editing: !this.state.editing })}><${Icon} name=${this.state.editing ? 'check' : 'edit'}/></button>`}
+        <button class="icon-button" aria-label=${t('addTitle')} onClick=${() => this.open({ kind: 'add', menuId: viewing?.id, locked })}><${Icon} name="plus"/></button></div></div>
+      ${s.menus.length > 0 && html`<div class="menu-chips" aria-label=${t('menus')}>${s.menus.map(m => html`<button key=${m.id} class=${`chip ${viewing?.id === m.id ? 'active' : ''}`} aria-pressed=${viewing?.id === m.id} onClick=${() => show(m.id)}>${m.id === s.activeMenuId && html`<${Icon} name="check" size=${18}/>`}<span>${m.name}</span>${m.id === s.activeMenuId && html`<span class="sr-only">${t('currentMenu')}</span>`}</button>`)}</div>`}
+      ${viewing && !isActive && (canChoose ? html`<button disabled=${s.group.status !== 'open' || !items.length} onClick=${() => { const use = () => this.action('menu.activate', { id: viewing.id }); if (s.picks.length) this.confirm(t('switchMenu', viewing.name), t('useMenu'), use); else use(); }}>${t('useMenu')}</button>` : html`<p>${t('ordererChooses')}</p>`)}
+      ${viewing && this.state.editing && html`<div class="actions"><button onClick=${() => this.open({ kind: 'menuName', menu: viewing })}><${Icon} name="edit"/>${t('rename')}</button><button class="danger" disabled=${locked || isActive && !canChoose} onClick=${() => this.confirm(t('deleteMenuConfirm', viewing.name), t('delete'), () => this.action('menu.remove', { id: viewing.id }))}><${Icon} name="trash"/>${t('deleteMenu')}</button></div>`}
       ${locked && html`<p class="banner warning"><${Icon} name="lock"/>${t('menuLocked')}</p>`}
-      ${!items.length && html`<${Empty} text=${t('emptyMenu')} icon="menu"/>`}
-      <div class="actions menu-tools"><button class="primary" disabled=${locked} onClick=${() => this.open({ kind: 'scan', menuId: viewing?.id })}><${Icon} name="camera"/>${t('scanMenu')}</button><button disabled=${locked} onClick=${() => this.open({ kind: 'item', menuId: viewing?.id })}><${Icon} name="plus"/>${t('add')}</button><button onClick=${() => this.open({ kind: 'library' })}><${Icon} name="book"/>${t('library')}</button></div>
-      ${!items.length && html`<button class="quiet" disabled=${locked} onClick=${() => this.run(async () => { const r = await this.props.store.presets(viewing?.id); if (r.menuId) show(r.menuId); })}>${t('commonItems')}</button>`}
+      ${!s.menus.length && html`<${Empty} text=${t('noMenus')} icon="menu"/>`}
+      ${s.menus.length > 0 && !items.length && html`<${Empty} text=${t('emptyMenu')} icon="menu"><button disabled=${locked} onClick=${() => this.run(async () => { const r = await this.props.store.presets(viewing?.id); if (r.menuId) show(r.menuId); })}>${t('commonItems')}</button><//>`}
       ${CATEGORIES.map(category => {
         const list = items.filter(i => i.category === category);
-        return list.length > 0 && html`<section class="menu-section"><h3>${t('categories')[category]}</h3><ul class="item-list">${list.map(item => html`<li key=${item.id}><div class="menu-row">${leader(item.name, money(item.price, s.group.currency))}
-          ${item.price === 0 && html`<small>${t('priceUnset')}</small>`}
-          ${this.state.editing && html`<div class="actions"><button disabled=${locked} onClick=${() => this.open({ kind: 'item', menuId: viewing.id, item })}><${Icon} name="edit"/>${t('edit')}</button><button class="danger" disabled=${locked} onClick=${() => this.confirm(t('deleteItem', item.name), t('delete'), () => this.action('menu.delete', { id: item.id }, t('itemDeleted')))}><${Icon} name="alert"/>${t('delete')}</button></div>`}</div></li>`)}</ul></section>`;
+        return list.length > 0 && html`<section class="menu-section"><h3>${t('categories')[category]}</h3><ul class="item-list">${list.map(item => html`<li key=${item.id}><div class="menu-row">${leader(item.name, item.price === 0 ? t('priceUnset') : money(item.price, s.group.currency))}
+          ${this.state.editing && html`<div class="actions"><button disabled=${locked} onClick=${() => this.open({ kind: 'item', menuId: viewing.id, item })}><${Icon} name="edit"/>${t('edit')}</button><button class="danger" disabled=${locked} onClick=${() => this.confirm(t('deleteItem', item.name), t('delete'), () => this.action('menu.delete', { id: item.id }, t('itemDeleted')))}><${Icon} name="trash"/>${t('delete')}</button></div>`}</div></li>`)}</ul></section>`;
       })}
     </section>`;
   }
   picks(v) {
-    const s = v.state, locked = s.group.status !== 'open', items = activeItems(s), current = activeMenu(s);
+    const s = v.state, locked = s.group.status !== 'open', items = activeItems(s);
     const myPicks = s.picks.filter(p => p.memberId === v.identity.id);
-    return html`<section>${heading(t('picks'), current ? t('fromMenu', current.name) : t('pickHint'))}
+    return html`<section>${heading(t('picks'))}
       ${locked && html`<p class="banner warning"><${Icon} name="lock"/>${t('lockedPicks')}</p>`}
-      <button class="quiet" disabled=${locked || !items.length} onClick=${() => { this.open({ kind: 'shuffle' }); this.props.store.suggest(matchMedia('(prefers-reduced-motion: reduce)').matches); }}><${Icon} name="dice"/>${t('undecided')}</button>
-      ${!myPicks.length && html`<p class="muted">${t('emptyPicks')}</p>`}
-      ${!items.length && html`<${Empty} text=${t('emptyMenu')} icon="menu"><button onClick=${() => this.go('menu')}>${t('goMenu')}</button><//>`}
+      ${items.length > 0 && html`<button class="quiet surprise" disabled=${locked} onClick=${() => { this.open({ kind: 'shuffle' }); this.props.store.suggest(matchMedia('(prefers-reduced-motion: reduce)').matches); }}><${Icon} name="dice"/>${t('undecided')}</button>`}
+      ${!items.length && html`<${Empty} text=${t('emptyMenu')} icon="menu"><button onClick=${() => this.go('menu')}>${t('menu')}</button><//>`}
       ${items.map(item => {
         const pick = myPicks.find(p => p.itemId === item.id), qty = pick?.qty || 0;
         return html`<article key=${item.id} class=${`pick-row ${qty ? 'selected' : ''}`}>
-          ${leader(html`<button class="item-name quiet" disabled=${locked} onClick=${() => this.open({ kind: 'note', item })} aria-label=${t('addNote', item.name)}>${item.name}</button>`, money(item.price, s.group.currency))}
-          <div class="row"><span class="caption">${t('categories')[item.category]}</span><div class="stepper"><button aria-label=${t('removeOne', item.name)} disabled=${locked || !qty} onClick=${() => this.props.store.changePick(item.id, -1)}><${Icon} name="minus"/></button><output aria-label=${t('quantity', item.name, qty)} aria-live="polite">${qty}</output><button aria-label=${t('addOne', item.name)} disabled=${locked || qty === 99} onClick=${() => this.props.store.changePick(item.id, 1)}><${Icon} name="plus"/></button></div></div>
-          ${pick?.note && html`<p class="item-note"><${Icon} name="note" size=${16}/><em>${pick.note}</em></p>`}
+          ${leader(html`<button class="item-name" disabled=${locked} onClick=${() => this.open({ kind: 'note', item })} aria-label=${t('addNote', item.name)}>${item.name}</button>`, money(item.price, s.group.currency))}
+          <div class="row">${pick?.note ? html`<p class="item-note"><${Icon} name="note" size=${20}/><span>${pick.note}</span></p>` : html`<span></span>`}<div class="stepper"><button aria-label=${t('removeOne', item.name)} disabled=${locked || !qty} onClick=${() => this.props.store.changePick(item.id, -1)}><${Icon} name="minus"/></button><output aria-label=${t('quantity', item.name, qty)} aria-live="polite">${qty}</output><button aria-label=${t('addOne', item.name)} disabled=${locked || qty === 99} onClick=${() => this.props.store.changePick(item.id, 1)}><${Icon} name="plus"/></button></div></div>
         </article>`;
       })}
-      <div class="total-bar">${leader(t('subtotal'), money(costs(s).people.find(p => p.id === v.identity.id)?.subtotal || 0, s.group.currency))}</div>
+      ${myPicks.length > 0 && html`<div class="total-bar">${leader(t('subtotal'), money(costs(s).people.find(p => p.id === v.identity.id)?.subtotal || 0, s.group.currency))}</div>`}
     </section>`;
   }
   order(v) {
-    const s = v.state, totals = costs(s), orderer = s.group.ordererId === v.identity.id;
-    const qtyTotal = s.picks.reduce((n, p) => n + p.qty, 0);
-    return html`<section>${heading(t('order'), t('placedBy', nameOf(s, s.group.ordererId)))}
-      <div class="card receipt"><h2>${t('consolidated', qtyTotal)}</h2><p class="caption">${activeMenu(s)?.name}</p>
-        ${!s.picks.length && html`<${Empty} text=${t('noPicks')} icon="receipt"/>`}
-        <ul class="item-list">${activeItems(s).map(item => { const qty = s.picks.filter(p => p.itemId === item.id).reduce((n, p) => n + p.qty, 0); return qty > 0 && html`<li>${leader(`${item.name} x ${qty}`, money(qty * item.price, s.group.currency))}</li>`; })}</ul>
-        <div class="total-bar">${leader(t('estimated'), money(totals.estimatedTotal, s.group.currency))}</div>
-      </div>
-      <details class="breakdown"><summary>${t('perPerson')}</summary>${s.members.map(person => {
+    const s = v.state, totals = costs(s), orderer = s.group.ordererId === v.identity.id, c = s.group.currency;
+    const lines = activeItems(s).map(item => [item, s.picks.filter(p => p.itemId === item.id).reduce((n, p) => n + p.qty, 0)]).filter(([, qty]) => qty);
+    return html`<section>${heading(t('order'))}
+      ${receipt(html`<p class="r-strong">${s.group.name}</p><p>${activeMenu(s)?.name || ''}</p>${s.group.status === 'locked' && html`<p class="r-strong">${t('locked')}</p>`}<p class="r-gap"></p>
+        ${!lines.length && html`<p>${t('noPicks')}</p>`}
+        ${lines.map(([item, qty]) => leader(`${item.name} x ${qty}`, money(qty * item.price, c)))}
+        <p class="r-rule" aria-hidden="true"></p>${leader(t('estimated'), money(totals.estimatedTotal, c), 'r-strong')}
+        <p class="r-gap"></p><p>${t('orderer')}: ${nameOf(s, s.group.ordererId)}</p>`)}
+      ${s.picks.length > 0 && html`<details class="breakdown"><summary>${t('perPerson')}</summary>${s.members.map(person => {
         const picks = s.picks.filter(p => p.memberId === person.id);
-        return picks.length > 0 && html`<section key=${person.id}><h3>${person.name}</h3><ul class="plain-list">${picks.map(p => html`<li>${p.qty} × ${s.menu.find(i => i.id === p.itemId)?.name}${p.note && html`<small>${t('notePrefix')} ${p.note}</small>`}</li>`)}</ul></section>`;
-      })}</details>
-      <div class="stack order-actions"><button disabled=${!s.picks.length} onClick=${() => this.copy(orderText(s), t('orderCopied'))}><${Icon} name="copy"/>${t('copyOrder')}</button>
-        ${orderer && (s.group.status === 'open' ? html`<button class="primary" disabled=${!s.picks.length} onClick=${() => this.action('order.lock', {})}><${Icon} name="lock"/>${t('lock')}</button>` : html`<button class="primary" onClick=${() => this.go('costs')}>${t('enterBill')}</button><button onClick=${() => this.confirm(t('unlockConfirm'), t('unlock'), () => this.action('order.unlock', {}))}><${Icon} name="unlock"/>${t('unlock')}</button>`)}
-        <p class="muted">${t('orderHelp')}</p></div>
+        return picks.length > 0 && html`<section key=${person.id}><h3>${person.name}</h3><ul class="plain-list">${picks.map(p => html`<li>${p.qty} × ${s.menu.find(i => i.id === p.itemId)?.name}${p.note && html`<small>${p.note}</small>`}</li>`)}</ul></section>`;
+      })}</details>`}
+      <div class="actions two order-actions"><button class="outbound" disabled=${!s.picks.length} onClick=${() => this.copy(orderText(s), t('orderCopied'))}><${Icon} name="copy"/>${t('copyOrder')}</button>
+        ${orderer && (s.group.status === 'open' ? html`<button class="primary" disabled=${!s.picks.length} onClick=${() => this.action('order.lock', {})}><${Icon} name="lock"/>${t('lock')}</button>` : html`<button class="primary" onClick=${() => this.go('costs')}>${t('enterBill')}</button>`)}</div>
+      ${orderer && s.group.status === 'locked' && html`<button class="quiet" onClick=${() => this.confirm(t('unlockConfirm'), t('unlock'), () => this.action('order.unlock', {}))}><${Icon} name="unlock"/>${t('unlock')}</button>`}
     </section>`;
   }
   costs(v) {
-    const s = v.state, totals = costs(s), orderer = s.group.ordererId === v.identity.id, locked = s.group.status === 'locked';
-    return html`<section>${heading(t('costs'), t('billHelp'))}
-      <div class="bill-totals">${leader(t('estimated'), money(totals.estimatedTotal, s.group.currency))}${s.round.actualTotal !== null ? leader(t('actual'), money(s.round.actualTotal, s.group.currency)) : html`<p class="muted">${t('actualNotEntered')}</p>`}</div>
+    const s = v.state, totals = costs(s), orderer = s.group.ordererId === v.identity.id, locked = s.group.status === 'locked', c = s.group.currency;
+    const payment = person => {
+      const paid = !!s.round.payments[person.id];
+      if (person.id === s.group.ordererId) return html`<span class="r-note">${t('ownShare')}</span>`;
+      if (!person.participating) return html`<span class="r-note">—</span>`;
+      if (orderer && locked) return html`<button class=${paid ? 'stamp' : 'r-button'} aria-pressed=${paid} aria-label=${`${person.name}: ${paid ? 'paid' : 'not paid'}`} onClick=${() => this.action('payment.set', { id: person.id, paid: !paid })}>${t(paid ? 'paid' : 'unpaid')}</button>`;
+      return paid ? html`<span class="stamp">${t('paid')}</span>` : '';
+    };
+    return html`<section>${heading(t('costs'))}
       ${orderer && html`<form class="stack bill-form" key=${s.round.id} onSubmit=${e => { e.preventDefault(); const f = fields(e); this.run(() => this.action('bill.set', { actualTotal: cents(f.bill), splitMode: f.split }, t('billSaved'))); }}>
-        <label>${t('bill', s.group.currency)}<input name="bill" required type="number" min="0" max="1000000" step="0.01" inputmode="decimal" defaultValue=${s.round.actualTotal === null ? '' : (s.round.actualTotal / 100).toFixed(2)} disabled=${!locked}/></label>
+        ${!locked && html`<p class="banner warning"><${Icon} name="lock"/>${t('lockFirst')}</p>`}
+        <label>${t('bill', c)}<input name="bill" required type="number" min="0" max="1000000" step="0.01" inputmode="decimal" defaultValue=${s.round.actualTotal === null ? '' : (s.round.actualTotal / 100).toFixed(2)} disabled=${!locked}/><small>${t('billHelp')}</small></label>
         <label>${t('split')}<select name="split" defaultValue=${s.round.splitMode} disabled=${!locked}><option value="equal">${t('splitEqual')}</option><option value="proportional">${t('splitProportional')}</option></select></label>
-        <p class="muted">${t(locked ? 'billReset' : 'lockFirst')}</p><button disabled=${!locked}>${t('saveBill')}</button>
+        <button disabled=${!locked}>${t('saveBill')}</button>
       </form>`}
-      <section><h2>${t('whoOwes')}</h2>${s.round.actualTotal === null && html`<p class="muted">${t('estimateHint')}</p>`}
-        <ul class="people cost-people">${totals.people.map(person => html`<li key=${person.id}><div class="person-detail"><strong>${person.name}</strong><small>${t('itemsSubtotal')}: ${money(person.subtotal, s.group.currency)}${!person.participating ? ` · ${t('noPicks')}` : ''}</small></div><div class="payment"><strong class="amount">${money(person.owed, s.group.currency)}</strong>
-          ${person.id === s.group.ordererId ? html`<small>${t('ownShare')}</small>` : orderer && locked && person.participating ? html`<button aria-label=${`${person.name}: ${t(s.round.payments[person.id] ? 'paid' : 'unpaid')}`} aria-pressed=${!!s.round.payments[person.id]} class=${`paid-toggle ${s.round.payments[person.id] ? 'paid' : ''}`} onClick=${() => this.action('payment.set', { id: person.id, paid: !s.round.payments[person.id] })}>${t(s.round.payments[person.id] ? 'paid' : 'unpaid')}</button>` : html`<small class=${s.round.payments[person.id] ? 'paid' : ''}>${person.participating ? t(s.round.payments[person.id] ? 'paid' : 'unpaid') : '—'}</small>`}</div></li>`)}</ul>
-        <div class="total-bar grand-total"><span>${t('finalTotal')}</span><strong>${money(totals.actualTotal, s.group.currency)}</strong></div>
-      </section>
+      ${receipt(html`<p class="r-strong">${s.group.name}</p><p class="r-gap"></p>
+        ${leader(t('estimated'), money(totals.estimatedTotal, c))}
+        ${s.round.actualTotal !== null ? leader(t('actual'), money(s.round.actualTotal, c), 'r-strong') : html`<p>${t('actualNotEntered')}</p>`}
+        <p class="r-rule single" aria-hidden="true"></p>
+        <ul class="r-people">${totals.people.map(person => html`<li key=${person.id}>${leader(person.name, money(person.owed, c))}<span class="r-pay">${payment(person)}</span></li>`)}</ul>
+        <p class="r-rule" aria-hidden="true"></p>
+        <div class="r-total"><span>${t('finalTotal')}</span><strong>${money(totals.actualTotal, c)}</strong></div>`)}
       ${orderer && locked && html`<button class="primary full" onClick=${() => this.confirm(t('finishConfirm'), t('finish'), () => this.finishRound(s))}>${t('finish')}</button>`}
     </section>`;
   }
   history(v) {
     const s = v.state, tally = debts(s);
-    return html`<section>${heading(t('history'), t('rounds', s.history.length))}
+    return html`<section>${heading(t('history'))}
       ${!s.history.length ? html`<${Empty} text=${t('emptyHistory')} icon="history"/>` : html`<section><h2>${t('outstanding')}</h2>${!tally.length ? html`<p>${t('allSettled')}</p>` : html`<ul class="item-list">${tally.map(d => html`<li>${leader(`${d.name} → ${d.orderer}`, money(d.amount, d.currency))}</li>`)}</ul>`}</section>`}
-      ${[...s.history].reverse().map(round => html`<details class="card history-round" key=${round.id}><summary><strong>${date(round.date)}</strong><span>${round.menuName || ''} · ${money(round.actualTotal ?? round.estimatedTotal, round.currency)}${round.actualTotal === null ? ` ${t('estimateLabel')}` : ''}</span></summary>
-        <p>${t('orderer')}: ${round.members.find(m => m.id === round.ordererId)?.name}</p>
-        <div class="bill-totals">${leader(t('estimated'), money(round.estimatedTotal, round.currency))}${leader(t('actual'), round.actualTotal === null ? t('noActual') : money(round.actualTotal, round.currency))}</div>
-        <ul class="people">${round.amounts.filter(p => p.owed || round.picks.some(pick => pick.memberId === p.id)).map(person => html`<li key=${person.id}><div class="person-detail"><strong>${person.name} · ${money(person.owed, round.currency)}</strong>${round.picks.filter(p => p.memberId === person.id).map(p => html`<small>${p.qty} × ${round.menu.find(i => i.id === p.itemId)?.name}${p.note ? ` (${p.note})` : ''}</small>`)}</div>
-          <div>${person.id === round.ordererId ? html`<small>${t('ownShare')}</small>` : round.ordererId === v.identity.id ? html`<button class="paid-toggle" onClick=${() => this.action('history.payment', { roundId: round.id, id: person.id, paid: !round.payments[person.id] })}>${t(round.payments[person.id] ? 'paid' : 'unpaid')}</button>` : html`<small>${t(round.payments[person.id] ? 'paid' : 'unpaid')}</small>`}</div></li>`)}</ul>
-      </details>`)}
+      ${[...s.history].reverse().map(round => receipt(html`<p class="r-strong">${date(round.date)}</p><p>${round.menuName || ''}</p><p>${t('orderer')}: ${round.members.find(m => m.id === round.ordererId)?.name}</p><p class="r-gap"></p>
+        <ul class="r-people">${round.amounts.filter(p => p.owed || round.picks.some(pick => pick.memberId === p.id)).map(person => {
+          const paid = !!round.payments[person.id];
+          return html`<li key=${person.id}>${leader(person.name, money(person.owed, round.currency))}<span class="r-pay">${person.id === round.ordererId ? html`<span class="r-note">${t('ownShare')}</span>` : round.ordererId === v.identity.id ? html`<button class=${paid ? 'stamp' : 'r-button'} aria-pressed=${paid} onClick=${() => this.action('history.payment', { roundId: round.id, id: person.id, paid: !paid })}>${t(paid ? 'paid' : 'unpaid')}</button>` : paid ? html`<span class="stamp">${t('paid')}</span>` : ''}</span></li>`;
+        })}</ul>
+        <p class="r-rule" aria-hidden="true"></p>${leader(t('finalTotal'), money(round.actualTotal ?? round.estimatedTotal, round.currency), 'r-strong')}`, round.id))}
     </section>`;
   }
   settings(v) {
     const s = v.state, store = this.props.store;
+    const theme = resolvedTheme(v.preferences.theme);
     return html`<section>${heading(t('settings'))}
-      <section class="stack"><h2>${t('appSection')}</h2><p>${t('version', APP_VERSION)}</p>
-        ${v.updateReady ? html`<button class="primary" disabled=${v.updating} onClick=${() => store.applyUpdate?.()}>${t(v.updating ? 'updating' : 'updateNow')}</button>`
-          : html`<button disabled=${this.state.checking} onClick=${async () => { this.setState({ checking: true }); const r = await (store.checkForUpdate?.() ?? 'current'); this.setState({ checking: false }); store.toast(t(r === 'ready' ? 'updateFound' : r === 'offline' ? 'updateOffline' : 'upToDate')); }}>${t(this.state.checking ? 'checking' : 'checkUpdates')}</button>`}
-      </section>
-      <section class="stack"><h2>${t('libraryTitle')}</h2><p>${t('libraryAttribution')} <a href=${`${DATA_REPO_URL}#readme`} target="_blank" rel="noopener noreferrer">${t('libraryReadme')}</a></p>
-        <form class="stack" onSubmit=${e => { e.preventDefault(); const url = fields(e).url; this.run(async () => { await store.setDataBaseUrl(url); store.toast(t('librarySaved')); }); }}>
-          <label>${t('libraryUrl')}<input name="url" type="url" inputmode="url" required spellcheck=${false} autocapitalize="off" defaultValue=${v.config.dataBaseUrl || DATA_BASE_URL} key=${v.config.dataBaseUrl || DATA_BASE_URL}/></label>
-          <div class="actions"><button>${t('saveAddress')}</button>${v.config.dataBaseUrl && html`<button type="button" class="quiet" onClick=${() => this.run(async () => { await store.setDataBaseUrl(null); store.toast(t('librarySaved')); })}>${t('resetLibrary')}</button>`}</div>
-        </form></section>
-      <section><h2>${t('appearance')}</h2><label>${t('theme')}<select value=${v.preferences.theme} onChange=${e => { const theme = e.currentTarget.value; this.run(() => store.preferences({ theme })); }}>${['auto', 'light', 'dark'].map(theme => html`<option value=${theme}>${t(theme)}</option>`)}</select></label></section>
-      ${s && html`<form class="stack" onSubmit=${e => { e.preventDefault(); this.action('member.rename', { name: fields(e).name }); }}><label>${t('displayName')}<input name="name" required maxlength="30" defaultValue=${v.identity.name}/></label><button>${t('saveName')}</button></form>`}
-      ${v.role === 'host' && s && html`<form class="stack" onSubmit=${e => { e.preventDefault(); this.action('group.currency', { currency: fields(e).currency }); }}><h2>${t('groupCurrency')}</h2><label>${t('currency')}<input name="currency" required maxlength="8" defaultValue=${s.group.currency} list="currencies"/><datalist id="currencies"><option value="Rs"/><option value="₹"/><option value="$"/><option value="€"/></datalist></label><p class="muted">${t('currencyHint')}</p><button disabled=${s.group.status !== 'open'}>${t('saveCurrency')}</button></form>`}
-      <details><summary>${t('connectionSettings')}</summary><p class="muted">${t('connectionConfigHint')}</p>
-        <form class="stack" onSubmit=${e => { e.preventDefault(); const f = fields(e); this.run(() => store.settings({ signaling: JSON.parse(f.signaling), iceServers: JSON.parse(f.ice) })); }}><label>${t('signaling')}<textarea name="signaling" rows="7" required spellcheck=${false} defaultValue=${JSON.stringify(v.config.signaling, null, 2)}></textarea></label><label>${t('ice')}<textarea name="ice" rows="7" required spellcheck=${false} defaultValue=${JSON.stringify(v.config.iceServers, null, 2)}></textarea></label><button>${t('saveConnection')}</button></form>
-        <p>${v.status}</p><button disabled=${!v.role || !v.targetCode} onClick=${() => store.startRoom()}>${t('retry')}</button>
-        ${v.role === 'host' && html`<button onClick=${() => this.confirm(t('regenerateConfirm'), t('regenerate'), () => store.regenerateCode())}>${t('regenerate')}</button>`}
-      </details>
-      ${s && html`<section class="stack"><h2>${t('localData')}</h2><button onClick=${() => this.download(store.backup())}>${t('export')}</button><p class="muted">${t('exportHint')}</p><button class="danger" onClick=${() => this.confirm(t('leaveConfirm'), t('leave'), () => store.leave())}><${Icon} name="alert"/>${t('leave')}</button></section>`}
-      <details><summary>${t('offlineHelp')}</summary><p>${t('installHint')}</p><p>${t('installSteps')}</p><p>${t('offlineText')}</p></details>
+      <div class="stack">
+      ${s && html`<form class="stack" onSubmit=${e => { e.preventDefault(); this.action('member.rename', { name: fields(e).name }); }}><label>${t('displayName')}<span class="with-dice"><input name="name" required maxlength="30" defaultValue=${v.identity.name}/><button>${t('saveName')}</button></span></label></form>`}
+      ${v.role === 'host' && s && html`<form class="stack" onSubmit=${e => { e.preventDefault(); this.action('group.currency', { currency: fields(e).currency }); }}><label>${t('groupCurrency')}<span class="with-dice"><input name="currency" required maxlength="8" defaultValue=${s.group.currency} list="currencies"/><button disabled=${s.group.status !== 'open'}>${t('saveCurrency')}</button></span><small>${t('currencyHint')}</small></label><datalist id="currencies"><option value="Rs"/><option value="₹"/><option value="$"/><option value="€"/></datalist></form>`}
+      <fieldset><legend>${t('theme')}</legend><div class="segmented">${['light', 'dark'].map(value => html`<button type="button" aria-pressed=${theme === value} onClick=${() => this.run(() => store.preferences({ theme: value }))}>${theme === value && html`<${Icon} name="check" size=${20}/>`}${t(value)}</button>`)}</div></fieldset>
+      ${s && html`<button class="outbound" onClick=${() => this.download(store.backup())}><${Icon} name="share"/>${t('export')}</button>`}
+      ${v.role === 'host' && s && html`<button onClick=${() => this.confirm(t('regenerateConfirm'), t('regenerate'), () => store.regenerateCode())}>${t('regenerate')}</button>`}
+      ${s && html`<button class="danger" onClick=${() => this.confirm(t('leaveConfirm'), t('leave'), () => store.leave())}><${Icon} name="alert"/>${t('leave')}</button>`}
+      ${v.updateReady ? html`<button class="primary" disabled=${v.updating} onClick=${() => store.applyUpdate?.()}>${t(v.updating ? 'updating' : 'updateNow')}</button>`
+        : html`<button class="quiet" disabled=${this.state.checking} onClick=${async () => { this.setState({ checking: true }); const r = await (store.checkForUpdate?.() ?? 'current'); this.setState({ checking: false }); store.toast(t(r === 'ready' ? 'updateFound' : r === 'offline' ? 'updateOffline' : 'upToDate')); }}>${t(this.state.checking ? 'checking' : 'checkUpdates')}</button>`}
+      <p class="fineprint">${t('version', APP_VERSION)} · <a href="https://github.com/tellmeY18/chaikadi.fyi" target="_blank" rel="noopener">${t('source')}</a> · <a href=${`${DATA_REPO_URL}#readme`} target="_blank" rel="noopener noreferrer">${t('libraryReadme')}</a></p>
+      </div>
     </section>`;
   }
   async finishRound(s) {
@@ -398,11 +366,23 @@ class App extends Component {
       catch { store.notice(t('badQR')); }
     }}/>${error}<//>`;
     if (p.kind === 'library') return html`<${LibrarySheet} store=${store} view=${v} onClose=${close} suggest=${x => this.suggest(x)} onImported=${id => { this.setState({ viewMenu: id, editing: false }); close(); }}/>`;
+    if (p.kind === 'add') return html`<${Sheet} title=${t('addTitle')} onClose=${close}><ul class="sheet-list">
+      <li><button disabled=${p.locked} onClick=${() => this.open({ kind: 'item', menuId: p.menuId })}><${Icon} name="plus"/>${t('itemShort')}</button></li>
+      <li><button disabled=${p.locked} onClick=${() => this.open({ kind: 'scan', menuId: p.menuId })}><${Icon} name="camera"/>${t('scanMenu')}</button></li>
+      <li><button onClick=${() => this.open({ kind: 'library' })}><${Icon} name="book"/>${t('library')}</button></li>
+      <li><button onClick=${() => this.open({ kind: 'menuName' })}><${Icon} name="menu"/>${t('newMenu')}</button></li></ul><//>`;
+    if (p.kind === 'member') {
+      const m = s.members.find(x => x.id === p.member.id);
+      if (!m) return null;
+      return html`<${Sheet} title=${m.name} onClose=${close}><div class="stack">
+        ${m.id !== s.group.ordererId && html`<button onClick=${() => { close(); this.action('orderer.set', { id: m.id }); }}>${t('makeOrderer')}</button>`}
+        <button class="danger" disabled=${s.group.status !== 'open'} onClick=${() => { close(); this.confirm(t('removePerson', m.name), t('remove'), () => this.action('member.remove', { id: m.id })); }}><${Icon} name="alert"/>${t('remove')}</button></div><//>`;
+    }
     if (p.kind === 'share') return html`<${Sheet} title=${t('shareTitle')} onClose=${close}><p>${t('shareIntro')}</p><p class="caption">${p.source.name}</p>
       <ul class="item-list">${p.changes.map(c => html`<li>${leader(c.name, money(c.price, s.group.currency))}<small>${t('priceWas', money(c.before, s.group.currency), money(c.price, s.group.currency))}</small></li>`)}</ul>
-      <div class="sheet-actions"><button class="primary" onClick=${close}>${t('notNow')}</button><button onClick=${() => { close(); this.suggest({ placeId: p.source.placeId, city: p.source.city, name: p.source.name, changes: p.changes.map(c => ({ name: c.name, category: c.category, price: c.price / 100 })) }); }}><${Icon} name="external"/>${t('shareAction')}</button></div><//>`;
+      <div class="sheet-actions"><button onClick=${close}>${t('notNow')}</button><button class="outbound" onClick=${() => { close(); this.suggest({ placeId: p.source.placeId, city: p.source.city, name: p.source.name, changes: p.changes.map(c => ({ name: c.name, category: c.category, price: c.price / 100 })) }); }}><${Icon} name="external"/>${t('shareAction')}</button></div><//>`;
     if (p.kind === 'copy') return html`<${Sheet} title=${t('selectCopy')} onClose=${close}><textarea readonly rows="8" value=${p.text} onFocus=${e => e.currentTarget.select()} autofocus></textarea><button class="primary" onClick=${close}>${t('done')}</button><//>`;
-    if (p.kind === 'locked') return html`<${Sheet} title=${t('locked')} onClose=${close} className="lock-reveal"><${Icon} name="tumbler" size=${48}/><div class="typed-lock" aria-hidden="true">${t('locked')}</div><div class="lock-rule" aria-hidden="true"></div><p>${t('lockHelp')}</p><button class="primary" onClick=${close}>${t('done')}</button><//>`;
+    if (p.kind === 'locked') return html`<${Sheet} title=${t('order')} onClose=${close} className="lock-reveal"><${Icon} name="tumbler" size=${48}/><div class="typed-lock" aria-hidden="true">${t('locked')}</div><div class="lock-rule" aria-hidden="true"></div><p>${t('lockHelp')}</p><button class="primary" onClick=${close}>${t('done')}</button><//>`;
     if (p.kind === 'shuffle') {
       const item = activeItems(s).find(i => i.id === v.suggested), locked = s.group.status !== 'open';
       return html`<${Sheet} title=${t('suggestion')} onClose=${close}><div class=${`shuffle-result ${v.shuffling ? 'striking' : ''}`} role="status">${item?.name || t('shuffle')}</div><p class="amount">${item ? money(item.price, s.group.currency) : ''}</p>
@@ -426,28 +406,28 @@ class App extends Component {
     const v = this.state.view, s = v.state, store = this.props.store;
     const tabs = [['menu', 'menu'], ['picks', 'user'], ['order', 'receipt'], ['costs', 'rupee']];
     const online = v.role === 'host' || v.hostOnline;
+    const onlineCount = s ? s.members.filter(m => m.online && online).length : 0;
     const count = s?.picks.filter(p => p.memberId === v.identity.id).reduce((n, p) => n + p.qty, 0) || 0;
-    return html`<div class="app-shell"><header class="app-header"><div class="header-inner"><a class="brand" href="#" onClick=${e => { e.preventDefault(); this.go('lobby'); }}><${Icon} name="tumbler"/><span>${t('app')}</span></a>
-      <div class="header-actions">${s && html`<button class="compact-code" aria-label=${`${t('group')}: ${s.group.roomCode}`} onClick=${() => this.go('lobby')}>${s.group.roomCode}</button><span class="header-presence" aria-live="polite">${online ? `● ${t('onlineCount', s.members.filter(m => m.online).length)}` : `○ ${t('offline')}`}</span>`}<button class="quiet icon-button" aria-label=${t('more')} aria-expanded=${this.state.appMenu} onClick=${() => this.setState({ appMenu: !this.state.appMenu })}><${Icon} name="more"/></button></div></div>
-      ${this.state.appMenu && html`<nav class="app-menu" aria-label=${t('more')}>${s && html`<button onClick=${() => this.go('lobby')}><${Icon} name="user"/>${t('group')}</button><button onClick=${() => this.go('history')}><${Icon} name="history"/>${t('history')}</button>`}<button onClick=${() => this.go('settings')}><${Icon} name="settings"/>${t('settings')}</button>${v.role && html`<button onClick=${() => { this.setState({ appMenu: false }); store.showManual(); }}><${Icon} name="offline"/>${t('pair')}</button>`}</nav>`}
-      </header><main id="main">
+    return html`<div class="app-shell"><header class="app-header"><div class="header-inner"><a class="brand" href="#" onClick=${e => { e.preventDefault(); this.go('lobby'); }}><${Icon} name="tumbler" size=${28}/><span>${t('app')}</span></a>
+      <div class="header-actions">${s && html`<button class="header-presence" aria-label=${`${t('group')}: ${t('onlineCount', onlineCount)}`} onClick=${() => this.go('lobby')}><span class=${`presence ${online ? 'online crayon-green' : ''}`} aria-hidden="true"></span><span aria-hidden="true">${onlineCount}</span></button>`}<button class="quiet icon-button" aria-label=${t('more')} aria-expanded=${this.state.appMenu} onClick=${() => this.setState({ appMenu: !this.state.appMenu })}><${Icon} name="more"/></button></div></div>
+      ${this.state.appMenu && html`<nav class="app-menu" aria-label=${t('more')}>${s && html`<button onClick=${() => this.go('lobby')}><${Icon} name="user"/>${t('group')}</button><button onClick=${() => this.go('history')}><${Icon} name="history"/>${t('history')}</button>`}<button onClick=${() => this.go('settings')}><${Icon} name="settings"/>${t('settings')}</button></nav>`}
+      </header>
+      ${this.state.appMenu && html`<div class="scrim" aria-hidden="true" onClick=${() => this.setState({ appMenu: false })}></div>`}
+      <main id="main">
         ${!v.ready ? html`<p role="status">${t('opening')}</p>` : html`
-          ${v.updateReady && html`<div class="banner info update-banner" role="status"><${Icon} name="refresh"/><span><strong>${t('updateReady')}</strong> ${t('updateKeeps')}${[...store.network.links.values()].some(l => l.mode === 'manual') ? html`<small>${t('updateManual')}</small>` : ''}</span><button class="primary" disabled=${v.updating} onClick=${() => store.applyUpdate?.()}>${t(v.updating ? 'updating' : 'updateNow')}</button></div>`}
-          ${v.storageWarning && html`<div class="banner error" role="alert"><${Icon} name="alert"/><span><strong>${t('error')}</strong> ${v.storageWarning}</span></div>`}
-          ${v.notice && html`<div class="banner error" role="alert"><${Icon} name="alert"/><span><strong>${t('error')}</strong> ${v.notice}</span><button class="quiet icon-button" aria-label=${t('dismiss')} onClick=${() => store.notice('')}><${Icon} name="close"/></button></div>`}
-          ${v.role === 'member' && s && !v.hostOnline && html`<div class="banner warning" role="status"><${Icon} name="offline"/><span>${t('hostOffline')}<small>${t('queued', v.pending)}</small></span></div>`}
+          ${v.updateReady && v.tab !== 'settings' && html`<div class="banner info update-banner" role="status"><${Icon} name="refresh"/><span><strong>${t('updateReady')}</strong> ${t('updateKeeps')}</span><button class="primary" disabled=${v.updating} onClick=${() => store.applyUpdate?.()}>${t(v.updating ? 'updating' : 'updateNow')}</button></div>`}
+          ${v.storageWarning && html`<div class="banner error" role="alert"><${Icon} name="alert"/><span><span class="sr-only">${t('error')}</span> ${v.storageWarning}</span></div>`}
+          ${v.notice && html`<div class="banner error" role="alert"><${Icon} name="alert"/><span><span class="sr-only">${t('error')}</span> ${v.notice}</span><button class="quiet icon-button" aria-label=${t('dismiss')} onClick=${() => store.notice('')}><${Icon} name="close"/></button></div>`}
+          ${v.role === 'member' && s && !v.hostOnline && html`<div class="banner warning" role="status"><${Icon} name="offline"/><span>${t('hostOffline')} ${t('queued', v.pending)}</span><button class="quiet" onClick=${() => store.startRoom()}>${t('retry')}</button></div>`}
           ${v.pending > 0 && v.hostOnline && html`<p class="sync-status" role="status">${t('sending', v.pending)}</p>`}
-          ${!s && v.role === 'member' && html`<div class=${`banner ${v.manualHint ? 'error' : 'info'}`} role="status">${v.manualHint ? html`<${Icon} name="alert"/><span><strong>${t('error')}</strong> ${t('hostUnreachable', v.targetCode)}</span>` : t('connecting')}</div>`}
-          ${v.manualHint && !s && v.role && html`<p class="banner warning"><${Icon} name="offline"/>${t('pairHelp')}</p>`}
+          ${!s && v.role === 'member' && html`<div class=${`banner ${v.unreachable ? 'error' : 'info'}`} role="status">${v.unreachable ? html`<${Icon} name="alert"/><span>${t('hostUnreachable', v.targetCode)}</span><button class="quiet" onClick=${() => store.startRoom()}>${t('retry')}</button>` : html`<span>${t('connecting')}</span>`}</div>`}
           ${v.tab === 'settings' ? this.settings(v) : !s ? this.home(v) : this[v.tab]?.(v)}
-          ${s && !v.preferences.installDismissed && !matchMedia('(display-mode: standalone)').matches && html`<aside class="install-hint"><details><summary>${t('install')}</summary><p>${t('installHint')}</p><p>${t('installSteps')}</p></details><button class="quiet" onClick=${() => this.run(() => store.preferences({ installDismissed: true }))}>${t('installDone')}</button></aside>`}
         `}
-        <footer><span>${t('tagline')}</span><a href="https://github.com/tellmeY18/chaikadi.fyi" target="_blank" rel="noopener">${t('source')}</a><span id="offline-status">${v.offline || t('offlinePreparing')}</span></footer>
       </main>
-      ${s && html`<nav class="bottom-nav" aria-label="Main navigation">${tabs.map(([key, icon]) => html`<button key=${key} aria-label=${t(key)} class=${v.tab === key ? 'active' : ''} aria-current=${v.tab === key ? 'page' : undefined} onClick=${() => this.go(key)}><span class="tab-icon"><${Icon} name=${icon}/>${key === 'picks' && count > 0 && html`<span class="tab-badge">${count}</span>`}${key === 'order' && s.group.status === 'locked' && html`<span class="tab-badge" aria-label=${t('locked')}><${Icon} name="lock" size=${12}/></span>`}</span><span>${t(key)}</span></button>`)}</nav>`}
-      ${v.toast && html`<div class="toast" role="status" aria-live="polite">${v.toast}</div>`}
-      ${v.pairing ? html`<${Pairing} view=${v} store=${store} run=${this.run}/>` : this.renderSheet(v)}
-      ${this.state.confirmation && html`<${Modal} title=${this.state.confirmation.label} onClose=${() => this.setState({ confirmation: null })}><p>${this.state.confirmation.message}</p><div class="stack"><button class="primary" autofocus onClick=${() => this.setState({ confirmation: null })}>${t('keep')}</button><button class="danger" onClick=${() => { const action = this.state.confirmation.action; this.setState({ confirmation: null }); this.run(action); }}><${Icon} name="alert"/>${this.state.confirmation.label}</button></div><//>`}
+      ${s && html`<nav class="bottom-nav" aria-label="Main navigation">${tabs.map(([key, icon]) => html`<button key=${key} class=${v.tab === key ? 'active' : ''} aria-current=${v.tab === key ? 'page' : undefined} onClick=${() => this.go(key)}><span class="tab-icon"><${Icon} name=${icon}/>${key === 'picks' && count > 0 && html`<span class="tab-badge"><span class="sr-only">, </span>${count}</span>`}${key === 'order' && s.group.status === 'locked' && html`<span class="tab-badge"><${Icon} name="lock" size=${12}/><span class="sr-only">, ${t('locked')}</span></span>`}</span><span class="tab-label">${t(key)}</span></button>`)}</nav>`}
+      ${v.toast && html`<button class="toast" role="status" aria-live="polite" onClick=${() => store.toast('')}>${v.toast}</button>`}
+      ${this.renderSheet(v)}
+      ${this.state.confirmation && html`<${Modal} title=${this.state.confirmation.label} onClose=${() => this.setState({ confirmation: null })}><p>${this.state.confirmation.message}</p><div class="stack"><button autofocus onClick=${() => this.setState({ confirmation: null })}>${t('keep')}</button><button class="danger" onClick=${() => { const action = this.state.confirmation.action; this.setState({ confirmation: null }); this.run(action); }}><${Icon} name="alert"/>${this.state.confirmation.label}</button></div><//>`}
     </div>`;
   }
 }

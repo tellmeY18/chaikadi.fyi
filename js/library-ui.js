@@ -11,10 +11,12 @@ const html = htm.bind(h);
 const leader = (label, value) => html`<div class="leader"><span>${label}</span><span class="dots" aria-hidden="true"></span><strong class="amount">${value}</strong></div>`;
 
 // Icon + words; never colour alone.
-export function FreshChip({ lastConfirmed, freshness }) {
+export function FreshChip({ lastConfirmed, freshness, full = false }) {
   const { status, days } = freshnessOf(lastConfirmed, freshness);
   const [icon, text] = status === 'fresh' ? ['check', days === 0 ? t('freshToday') : t('freshDays', days)]
     : status === 'stale' ? ['clock', t('staleChip')] : ['alert', t('unverifiedChip')];
+  // Fresh prices need no badge; only old or unconfirmed ones are flagged.
+  if (status === 'fresh' && !full) return null;
   return html`<span class=${`fresh-chip fresh-${status}`}><${Icon} name=${icon} size=${16}/>${text}</span>`;
 }
 const SampleTag = () => html`<span class="sample-tag">${t('sample')}</span>`;
@@ -115,10 +117,10 @@ export class LibrarySheet extends Component {
     const currency = place.currency === 'INR' ? this.props.view.state.group.currency : place.currency;
     const where = whereText(place);
     return html`<div class="library-preview">
-      <button class="quiet" onClick=${() => this.setState({ place: null, choosing: false })}>${t('backToResults')}</button>
+      <button class="back" onClick=${() => this.setState({ place: null, choosing: false })}><${Icon} name="back"/>${t('backToResults')}</button>
       <h3>${place.name}</h3>
       ${place.localName && html`<p class="local-name">${place.localName}</p>`}
-      <div class="chip-row"><${FreshChip} lastConfirmed=${place.last_confirmed} freshness=${manifest.freshness}/>${place.sample && html`<${SampleTag}/>`}</div>
+      <div class="chip-row"><${FreshChip} full lastConfirmed=${place.last_confirmed} freshness=${manifest.freshness}/>${place.sample && html`<${SampleTag}/>`}</div>
       <dl class="place-facts">
         ${where && html`<dt>${t('placeWhere')}</dt><dd>${where}</dd>`}
         ${place.hours && html`<dt>${t('placeHours')}</dt><dd>${hoursText(place.hours)}</dd>`}
@@ -145,7 +147,7 @@ export class LibrarySheet extends Component {
             <button class="danger" disabled=${busy} onClick=${() => this.use('replace')}><${Icon} name="alert"/>${t('replaceItems')}</button>
             <button class="quiet" onClick=${() => this.setState({ choosing: false })}>${t('cancel')}</button>`
           : html`<p class="muted">${t('importNote')}</p><button class="primary" disabled=${busy} onClick=${() => this.use()}>${busy ? '…' : t('useThisMenu')}</button>
-            <button onClick=${() => this.props.suggest({ placeId: place.id, city, name: place.name, changes: [] })}><${Icon} name="external"/>${t('suggestUpdate')}</button>`}
+            <button class="outbound" onClick=${() => this.props.suggest({ placeId: place.id, city, name: place.name, changes: [] })}><${Icon} name="external"/>${t('suggestUpdate')}</button>`}
       </div>
     </div>`;
   }

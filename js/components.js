@@ -21,7 +21,7 @@ const paths = {
   edit: 'M4 16L16 4l4 4L8 20H4z M13 7l4 4', trash: 'M4 6h16 M9 6V3h6v3 M6 6l1 15h10l1-15 M10 10v7 M14 10v7',
   alert: 'M12 3L2 21h20z M12 9v5 M12 17v1', note: 'M4 3h16v13l-5 5H4z M15 21v-5h5 M8 7h8 M8 11h6',
   camera: 'M3 7h4l2-3h6l2 3h4v14H3z M8 13a4 4 0 1 0 8 0a4 4 0 1 0-8 0',
-  more: 'M3 6h18 M3 12h18 M3 18h18', link: 'M9 15l6-6 M8 7l3-3a5 5 0 0 1 7 7l-3 3 M16 17l-3 3a5 5 0 0 1-7-7l3-3',
+  more: 'M3 6h18 M3 12h18 M3 18h18', back: 'M19 12H5 M11 6l-6 6 6 6', dots: 'M4 11h2v2H4z M11 11h2v2h-2z M18 11h2v2h-2z', link: 'M9 15l6-6 M8 7l3-3a5 5 0 0 1 7 7l-3 3 M16 17l-3 3a5 5 0 0 1-7-7l3-3',
   tumbler: 'M5 9h14l-2 12H7z M9 2c-2 2 2 3 0 5 M14 1c-2 2 2 3 0 5 M6 14h12',
   book: 'M4 4h7a3 3 0 0 1 3 3v14a3 3 0 0 0-3-3H4z M20 4h-6 M20 4v14h-6',
   external: 'M14 3h7v7 M21 3L11 13 M18 14v7H3V6h7',
@@ -57,7 +57,7 @@ export class CodeInput extends Component {
   }
   render() {
     return html`<fieldset class="code-field"><legend>${t('roomCode')}</legend><div class="code-boxes">
-      ${Array.from({ length: 4 }, (_, i) => html`<input key=${i} ref=${el => this.inputs[i] = el} value=${this.state.digits[i]}
+      ${Array.from({ length: 4 }, (_, i) => html`<input key=${i} class=${this.state.digits[i] ? 'filled' : ''} ref=${el => this.inputs[i] = el} value=${this.state.digits[i]}
         aria-label=${t('codeDigit', i + 1)} autocomplete=${i === 0 ? 'one-time-code' : 'off'} autocapitalize="characters" spellcheck=${false}
         onFocus=${e => e.currentTarget.select()}
         onPaste=${e => { e.preventDefault(); this.update(e.clipboardData.getData('text'), 3); }}

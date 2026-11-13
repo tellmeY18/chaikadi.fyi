@@ -1,0 +1,60 @@
+name: Deploy
+
+# Tests every push and pull request. Pushes to main deploy the app to
+# Cloudflare Pages (project "chaikadi", custom domain chaikadi.fyi).
+# Repository secrets needed: CLOUDFLARE_API_TOKEN (Pages: Edit) and
+# CLOUDFLARE_ACCOUNT_ID.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test tests/*.test.js
+
+  deploy:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://chaikadi.fyi
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Only runtime files are published; design files, tests and tools stay private.
+      - name: Stage site
+        run: |
+          mkdir -p dist
+          cp -R index.html styles.css manifest.json sw.js _headers LICENSE js vendor fonts icons dist/
+          # Every file the service worker precaches must be present.
+          node -e "
+            const fs = require('fs');
+            const src = fs.readFileSync('sw.js', 'utf8');
+            const shell = src.slice(src.indexOf('const SHELL'), src.indexOf('];', src.indexOf('const SHELL')));
+            const missing = [...shell.matchAll(/'\.\/([^']*)'/g)].map(m => m[1]).filter(f => f && !fs.existsSync('dist/' + f));
+            if (missing.length) { console.error('Missing from dist:', missing); process.exit(1); }
+          "
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=chaikadi --branch=main --commit-dirty=true

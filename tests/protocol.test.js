@@ -6,7 +6,7 @@ import { uid, PROTOCOL_VERSION } from '../js/config.js';
 async function host() {
   const app = new AppStore();
   app.db = { save: async () => {} };
-  await app.create('Crew', 'Host', true);
+  app.startRoom = () => {}; await app.create('Crew', 'Host');
   await app.newMenu('Test menu');
   app.sent = [];
   app.network.send = (link, message) => { app.sent.push({ link, message }); return true; };

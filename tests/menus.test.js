@@ -58,7 +58,7 @@ test('moving an existing item cannot strand its picks in another menu', () => {
 });
 test('same names in different menus do not overwrite each other; presets are opt-in', async () => {
   const app = new AppStore(); app.db = { save: async () => {} };
-  await app.create('Group', 'Host', true);
+  app.startRoom = () => {}; await app.create('Group', 'Host');
   assert.equal(app.data.state.menus.length, 0);
   const a = await app.importMenu([{ name: 'Chai', category: 'Tea', price: 2000 }], { title: 'Stall A' });
   const b = await app.importMenu([{ name: 'Chai', category: 'Tea', price: 3000 }], { title: 'Stall B' });

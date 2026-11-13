@@ -1,6 +1,6 @@
 import { DEFAULT_CONFIG, PRESETS, PROTOCOL_VERSION, uid, roomCode, validCode, validateConfig, validateDataBaseUrl, funName } from './config.js';
 import { newGroup, reduce, Persistence, migrate } from './state.js';
-import { Network, PUBLIC_INTENTS, encodePairing, decodePairing, compatibilityPairing } from './p2p.js';
+import { Network, PUBLIC_INTENTS } from './p2p.js';
 import { orderableItems } from './data.js';
 
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -12,14 +12,14 @@ export class AppStore {
     this.listeners = new Set(); this.queue = Promise.resolve();
     this.data = { identity: { id: uid(), token: uid(), name: '' }, config: copy(DEFAULT_CONFIG),
       state: null, role: null, targetCode: '', outbox: [], credentials: {}, revoked: [], preferences: { theme: 'auto', installDismissed: false } };
-    this.ui = { tab: 'lobby', status: 'Ready', notice: '', storageWarning: '', manualHint: false,
-      hostOnline: false, pairing: null, suggested: null, shuffling: false, ready: false, blocked: false };
+    this.ui = { tab: 'lobby', status: 'Ready', notice: '', storageWarning: '', unreachable: false,
+      hostOnline: false, suggested: null, shuffling: false, ready: false, blocked: false };
     this.db = new Persistence(message => { this.ui.storageWarning = message; this.emit(); });
     this.network = new Network({
       onMessage: (link, msg) => this.serial(() => this.receive(link, msg)),
       onLink: (link, online) => this.serial(() => this.linkChanged(link, online)),
       onStatus: message => { this.ui.status = message; if (this.network.roomReady) this.freshRoom = false; this.emit(); },
-      onManualRequired: () => { this.ui.manualHint = true; this.emit(); },
+      onUnreachable: () => { this.ui.unreachable = true; this.emit(); },
       onCollision: () => this.serial(() => this.collision()),
     });
   }
@@ -42,7 +42,7 @@ export class AppStore {
   notice(message) { this.ui.notice = message; this.emit(); }
   toast(message) {
     clearTimeout(this.toastTimer); this.ui.toast = message; this.emit();
-    this.toastTimer = setTimeout(() => { this.ui.toast = ''; this.emit(); }, 3000);
+    if (message) this.toastTimer = setTimeout(() => { this.ui.toast = ''; this.emit(); }, 6000);
   }
   async preferences(patch) {
     this.data.preferences = { theme: 'auto', installDismissed: false, ...this.data.preferences, ...patch };
@@ -89,7 +89,7 @@ export class AppStore {
     if (!validCode(code) || this.data.state) throw new Error('Invalid room invitation.');
     this.data.targetCode = code; this.emit();
   }
-  async create(name, displayName, manualOnly = false) {
+  async create(name, displayName) {
     if (this.data.state) throw new Error('Leave your current group in Settings first.');
     const code = roomCode(), id = this.data.identity.id;
     this.data.state = newGroup({ id: uid(), code, name, memberId: id, memberName: displayName, roundId: uid() });
@@ -98,21 +98,19 @@ export class AppStore {
     this.data.credentials[id] = this.data.identity.token;
     this.ui.hostOnline = true; this.ui.tab = 'lobby'; this.freshRoom = true; this.collisions = 0;
     await this.persist(); this.emit();
-    if (!manualOnly) this.startRoom();
-    else this.ui.status = 'Local host ready. Add a person to pair on the same Wi-Fi.';
+    this.startRoom();
     this.emit();
   }
-  async join(code, name, manualOnly = false) {
+  async join(code, name) {
     code = code.trim().toUpperCase(); name = name.trim();
-    if (!manualOnly && !validCode(code)) throw new Error('Enter a four-character room code (no 0, O, 1, I or L).');
+    if (!validCode(code)) throw new Error('Enter a four-character room code (no 0, O, 1, I or L).');
     if (!name || name.length > 30) throw new Error('Enter a display name of 1–30 characters.');
     if (this.data.state) throw new Error('Leave your current group in Settings first.');
     this.network.stop();
-    Object.assign(this.data, { role: 'member', targetCode: manualOnly ? '' : code, outbox: [], removed: false });
+    Object.assign(this.data, { role: 'member', targetCode: code, outbox: [], removed: false });
     this.data.identity.name = name; this.ui.blocked = false;
     await this.persist(); this.emit();
-    if (manualOnly) this.showManual();
-    else this.startRoom();
+    this.startRoom();
   }
   startRoom() {
     if (this.ui.blocked) return;
@@ -203,7 +201,7 @@ export class AppStore {
       await this.applyHost(this.intent('member.online', { id: link.memberId, online: false }));
     } else if (this.data.role === 'member') {
       this.ui.hostOnline = [...this.network.links.values()].some(l => l.authenticated);
-      if (!this.ui.hostOnline) this.ui.status = link.mode === 'manual' ? 'Host offline. Pair manually again when the host returns.' : 'Host offline. Retrying the saved room code…';
+      if (!this.ui.hostOnline) this.ui.status = 'Host offline. Retrying…';
       this.emit();
     }
   }
@@ -240,7 +238,7 @@ export class AppStore {
             this.data.state = reduce(this.data.state, this.intent('member.online', { id, online: true }));
           }
           await this.persist(); this.sendState(link); this.broadcast(); this.emit();
-          if (link.mode === 'manual' && this.ui.pairing) { this.ui.pairing.connected = true; this.emit(); }
+
         } catch (error) {
           this.data = beforeHello; link.memberId = null;
           this.network.send(link, { type: 'rejected', payload: { message: error.message, removed: this.data.revoked.includes(msg.senderId) }, version: 0, senderId: this.data.identity.id });
@@ -283,12 +281,12 @@ export class AppStore {
       if (this.data.state && incoming.group.version < this.data.state.group.version) return;
       const firstSync = !this.data.state;
       link.authenticated = true;
-      if (link.mode === 'manual' && this.ui.pairing) this.ui.pairing.connected = true;
+
       this.data.state = incoming;
       this.data.targetCode = incoming.group.roomCode;
       this.network.code = incoming.group.roomCode;
       this.data.outbox = this.data.outbox.filter(i => i.id !== msg.payload.ack && !incoming.receipts.includes(i.id));
-      this.ui.hostOnline = true; this.ui.status = `Connected to host · ${link.mode === 'manual' ? 'local Wi-Fi' : 'peer-to-peer'}`;
+      this.ui.hostOnline = true; this.ui.unreachable = false; this.ui.status = 'Connected to host';
       this.syncName(); await this.persist();
       if (firstSync) this.ui.tab = incoming.menu.length ? 'picks' : 'menu'; // joiners land where the action is
       this.emit();
@@ -433,43 +431,8 @@ export class AppStore {
   async leave() {
     this.network.stop();
     Object.assign(this.data, { state: null, role: null, targetCode: '', outbox: [], credentials: {}, revoked: [], removed: false });
-    Object.assign(this.ui, { hostOnline: false, tab: 'lobby', pairing: null, blocked: false, notice: '', status: 'Ready' });
+    Object.assign(this.ui, { hostOnline: false, tab: 'lobby', blocked: false, unreachable: false, notice: '', status: 'Ready' });
     await this.persist(); this.emit();
-  }
-  showManual() {
-    this.ui.pairing = { step: this.data.role === 'host' ? 'host-start' : 'join-offer', text: '', busy: false, sessionId: null };
-    this.emit();
-  }
-  closeManual() {
-    if (this.ui.pairing?.sessionId) this.network.cancelManual(this.ui.pairing.sessionId);
-    this.ui.pairing = null; this.emit();
-  }
-  async offer() {
-    const pairing = this.ui.pairing;
-    pairing.busy = true; this.emit();
-    try {
-      const value = await this.network.makeOffer();
-      if (this.ui.pairing !== pairing) { this.network.cancelManual(value.id); return; }
-      Object.assign(pairing, { step: 'host-answer', value, sessionId: value.id, text: await encodePairing(value) });
-    } finally { pairing.busy = false; this.emit(); }
-  }
-  async pair(text) {
-    const pairing = this.ui.pairing;
-    pairing.busy = true; this.emit();
-    try {
-      const value = await decodePairing(text);
-      if (this.data.role === 'host') {
-        await this.network.acceptAnswer(value); pairing.step = 'waiting';
-      } else {
-        const answer = await this.network.makeAnswer(value);
-        if (this.ui.pairing !== pairing) { this.network.cancelManual(value.id); return; }
-        Object.assign(pairing, { step: 'join-answer', value: answer, sessionId: answer.id, text: await encodePairing(answer) });
-      }
-    } finally { pairing.busy = false; this.emit(); }
-  }
-  compatibility() {
-    const pairing = this.ui.pairing;
-    if (pairing?.value) { pairing.text = compatibilityPairing(pairing.value); this.emit(); }
   }
   backup() { return JSON.stringify({ app: 'chaikadi.fyi', exportedAt: new Date().toISOString(), data: this.data }, null, 2); }
 }

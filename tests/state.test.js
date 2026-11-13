@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { newGroup, reduce, costs, debts, Persistence } from '../js/state.js';
 import { validCode, roomCode, validateConfig, DEFAULT_CONFIG } from '../js/config.js';
-import { encodePairing, decodePairing, compatibilityPairing } from '../js/p2p.js';
 
 let n = 0;
 const initial = () => action(newGroup({ id: 'group', code: 'ABCD', name: 'Tea crew', memberId: 'host', memberName: 'Anu', roundId: 'round1' }), 'menu.create', { id: 'test-menu', name: 'Test menu' });
@@ -109,12 +108,6 @@ test('debt tallies use archived orderer and currency and allow later settlement'
   assert.throws(() => action(s, 'history.payment', { roundId: 'round1', id: 'guest', paid: true }, 'guest'), /round’s orderer/);
   s = action(s, 'history.payment', { roundId: 'round1', id: 'guest', paid: true });
   assert.deepEqual(debts(s), []);
-});
-test('pairing text roundtrips compressed and compatibility formats', async () => {
-  const value = { v: 1, id: 'pair-id', type: 'offer', sdp: 'v=0\r\n' + 'a=candidate:local\r\n'.repeat(40) };
-  assert.deepEqual(await decodePairing(await encodePairing(value)), value);
-  assert.deepEqual(await decodePairing(compatibilityPairing(value)), value);
-  await assert.rejects(decodePairing('not a code'), /not a Chaikadi/);
 });
 test('connection config rejects unsafe/wrongly shaped settings', () => {
   assert.equal(validateConfig(DEFAULT_CONFIG), DEFAULT_CONFIG);

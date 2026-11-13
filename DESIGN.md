@@ -1,76 +1,90 @@
-# Chaikadi design and brand book · v0.2
+# Chaikadi design and brand book · v0.3
 
-**Build source of truth.** Based on the supplied v0.2 proposal. This edition selects
-its recommended direction and incorporates multiple named menus without default
-items. Product: an offline-capable group tea-break ledger, for 2–15 people.
+**Build source of truth.** v0.3 puts readability first: a black-and-white
+wireframe, a hyperlegible monospace for the interface, crayon colour only where it
+means something, and a receipt that feels like paper. Product: a group tea-break
+ledger for 2–15 people, connected peer-to-peer by room code (PeerJS). Preview:
+the **Redesign v0.3** page of `design/chaikadi-screens.figcraft`; audit in
+`design/UI-ACCESSIBILITY-REPORT.md`.
 
 ## Decisions
 
 | Decision | Selected |
 | --- | --- |
-| Paper | Neutral `#F7F7F7` |
-| Typeface | Courier Prime 400 and 700, locally hosted WOFF2 |
+| Page | Pure white `#FFFFFF` (light), pitch black `#000000` (dark) |
+| Interface type | Atkinson Hyperlegible Mono 400 / 700, locally hosted WOFF2 |
+| Receipt type | Courier Prime 400 / 700, receipts and the lock moment only |
+| Colour | Crayon only, with meaning (below); everything else black and white |
 | Tagline | Decide, order, split. |
-| Language | English first; catalogue in `js/strings.js` for future translation |
+| Language | English first; short words; catalogue in `js/strings.js` |
 | Currency | `Rs` with Indian grouping; ₹ is an optional local-font fallback |
-| Theme | System preference plus persisted Light / Dark / Follow system |
+| Theme | Two: Light and Dark. First run follows the device, then persisted |
+| Connection | Room code only (PeerJS). No manual / offline pairing |
 | Tabs | Menu, My picks, Order, Costs; Group / History / Settings in app menu |
-| Lock moment | Typed “Order locked.”, static tumbler, double rule |
-| Mark | Geometric tumbler with two steam strokes |
+| Paid | Ink stamp “PAID” on the receipt. Never coloured |
 | Person placing order | Orderer |
-| Corners | Square; 2px for avatars, 6px SVG icon tile |
 
 ## Essence and voice
 
-A Kerala tea stall’s ledger in your pocket: typed, not painted. Quiet, warm through
-plain words, premium through restraint. No distressing, grain, stains, shadows,
-gradients, mascots, decorative photographs or hue. Sentence case, two weights,
-short verbs. No eyebrow labels or tracked capitals. User-entered names retain
-their casing. “Room code” is the only use of “room” in normal UI; technical
-connection settings are confined to Settings and pairing help.
+A Kerala tea stall’s ledger in your pocket. Clear before clever: use a word only
+if the screen needs it; no explanatory sentences where a label will do. Sentence
+case, two weights, short verbs. User-entered names retain their casing.
 
-The app bar reads **Chaikadi**, never the marketing-only **Chaikadi.** lockup.
-The signature room plate is the one large ink surface in content. Photos are
-inputs to the scanner, not decoration.
+## Crayon colour = meaning
+
+Soft hand-coloured wax fills, used sparingly. Text on crayon is always `#111111`.
+Colour never works alone: every crayon also carries a word or shape.
+
+| Crayon | Hex | Only for |
+| --- | --- | --- |
+| Yellow | `#FFE066` | The room code (plate, completed join boxes) |
+| Blue | `#9FCBFF` | Outbound: Share link, Show QR, Scan QR, Copy, Export, Suggest an update |
+| Green | `#A7E3A0` | Online dots, Host / Orderer tags, the one forward button per screen |
+
+Menu, My picks and History have no green button: the bottom tabs move you on.
 
 ## Palette
 
 | Token | Light | Dark |
 | --- | --- | --- |
-| `--ink` | #111111 | #F2F2F2 |
-| `--paper` | #F7F7F7 | #0A0A0A |
-| `--surface` | #FFFFFF | #161616 |
-| `--tint` | #EDEDED | #232323 |
-| `--muted` | #595959 | #A3A3A3 |
-| `--line` | #BDBDBD | #3A3A3A |
+| `--page` | #FFFFFF | #000000 |
+| `--ink` | #000000 | #FFFFFF |
+| `--muted` | #4D4D4D | #B8B8B8 |
+| `--line` | #8C8C8C | #767676 |
+| `--receipt` | #FBF6E9 | #EDE7D6 (dimmed for glare) |
+| `--receipt-ink` | #111111 | #111111 |
 
-Rule grey is decorative only. Controls have 2px ink borders. Status always has a
-word and/or a symbol, a distinct border or weight: filled/hollow dot plus online /
-offline; `[x] Paid` / `[ ] Not paid`; selected pick rows have both tint and a 4px
-ink edge. Errors have an alert icon, “Error:” prefix and a 6px left bar; notes use
-a double border. A 50% ink scrim is the sole decorative translucent surface.
+Controls have 2px ink borders. Disabled is dashed grey. Errors: alert icon, 8px left
+bar, hidden “Error” prefix for screen readers. Warnings: double border. Destructive
+actions: dashed border plus alert icon. A 50% black scrim is the only translucency.
+
+## Receipt
+
+Order, Costs and each History round are receipts: paper stock, perforated top and
+bottom edges, a soft lift on white (none on black), Courier Prime, every character
+ink black. Leaders are dotted, totals sit under a double rule, the grand total is
+32px. Paid lines carry a tilted ink stamp. The receipt never inverts in dark mode.
 
 ## Type and grid
 
-All Latin UI: Courier Prime, 400 / 700. Malayalam names/notes and optional ₹ use
-local Noto Serif Malayalam. Combined fonts are below 150 KB; `font-display: swap`.
-Malayalam text is never forced into a character-width name column.
+Interface: Atkinson Hyperlegible Mono (distinct 0/O, 1/I/l). Malayalam names/notes
+and optional ₹ use local Noto Serif Malayalam. Fonts total under 150 KB.
 
 | Role | Size / line height |
 | --- | --- |
 | Plate | 56 / 60 maximum; scales to fit narrow screens |
-| Screen title | 28 / 34 |
-| Section heading | 22 / 28 |
-| Subheading / amount | 18 / 24 |
-| Body | 16 / 24 |
-| Helper | 14 / 20 |
-| Caption | 12 / 16 |
+| Screen title | 32 / 40 (1.75rem of an 18px root) |
+| Section heading | 22 / 30 |
+| Subheading / amount | 18 / 28 |
+| Body | 18 / 28 |
+| Secondary | 16 / 24 |
+| Smallest (optional text only) | 14 / 20 |
 | Grand total | 32 / 36 |
 
 Sizes are rem-based. Content measure: 560px maximum, 16px side padding on phones,
 24px from 600px. Spacing scale: 4, 8, 12, 16, 24, 32, 48, 64px. Left-align prose,
 right-align amounts. Only the plate and empty-state drawings are centered.
-Screen titles have a 2px ink rule. Totals have a 3px double rule. Item/amount
+Screen titles have a 2px ink rule. Totals have a double rule. Item/amount
 rows have decorative dotted leaders and wrap long names instead of truncating.
 
 ## Structure and components
@@ -80,7 +94,7 @@ rows have decorative dotted leaders and wrap long names instead of truncating.
 - **Bottom bar:** four 24px icons and 12px labels, at least 64px plus safe area;
   selected tab has a 3px ink top bar. My picks has a count badge; Order a lock.
 - **Home:** one-tap creation with prefilled names, secondary code join, quiet
-  offline pairing. Names can be edited/rerolled. Links and completed four-box
+  Scan QR. Names can be edited/rerolled. Links and completed four-box
   codes auto-join. Boxes accept paste and keyboard navigation.
 - **Group:** black plate, double inset paper rule, four underlined characters.
   Tap copies code. Share link / Show QR follow. Square initial avatars use six
@@ -133,10 +147,10 @@ Text contrast ≥4.5:1 (large text ≥3:1), control edges ≥3:1. Touch targets 
 16px type, decimal input mode for prices, and permit paste. Dialog errors are
 announced and associated with fields. Layout must survive 200% text scaling.
 
-Self-hosted fonts, icons and complete app shell are cached offline. Theme colour
-is #111111, #0A0A0A in dark mode; background #F7F7F7. Apple status bar is
-black-translucent with safe-area padding. The first successful group shows a
-dismissible installation hint. QR pairing always offers copy/paste text.
+Self-hosted fonts, icons and the app shell are cached by the service worker. Theme colour
+follows the page: #FFFFFF light, #000000 dark. Apple status bar is
+default with safe-area padding. Home shows a
+dismissible installation hint.
 
 ## Implementation notes
 

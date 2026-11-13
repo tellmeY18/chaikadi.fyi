@@ -1,6 +1,7 @@
-# Self-hosted type (95,536 bytes total)
+# Self-hosted type (113,276 bytes total)
 
-- Courier Prime v11, Latin subsets: regular 18,640 B, bold 19,348 B.
+- Atkinson Hyperlegible Mono v8, variable Latin subset (interface): 17,740 B.
+- Courier Prime v11, Latin subsets (receipts): regular 18,640 B, bold 19,348 B.
 - Noto Serif Malayalam v32, variable Malayalam subset: 57,548 B, includes ₹.
 - SIL Open Font License 1.1; complete copyright notices in the adjacent OFL files.
 

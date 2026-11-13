@@ -166,7 +166,7 @@ test('importing a library place: new menu, then add-missing or replace without d
   const net = fakeNetwork(), c = client(net);
   const stall = await c.getPlace('sample-snack-counter-edappally', 'in/kl/ernakulam');
   const app = new AppStore(); app.db = { save: async () => {} };
-  await app.create('Crew', 'Host', true);
+  app.startRoom = () => {}; await app.create('Crew', 'Host');
   const first = await app.importLibraryPlace(stall, 'in/kl/ernakulam');
   const state = () => app.data.state;
   const menu = state().menus.find(m => m.id === first.menuId);
@@ -195,7 +195,7 @@ test('importing a library place: new menu, then add-missing or replace without d
 
 test('reducer rejects malformed library links from peers', async () => {
   const app = new AppStore(); app.db = { save: async () => {} };
-  await app.create('Crew', 'Host', true);
+  app.startRoom = () => {}; await app.create('Crew', 'Host');
   const ok = await app.dispatch('menu.create', { id: 'm1', name: 'X', source: { placeId: 'node/1', city: 'in/kl/x', name: 'X', lastConfirmed: '2026-01-01', items: [{ name: 'A', category: 'Juice', price: 1 }] } });
   assert.equal(ok, false);
   assert.equal(app.data.state.menus.length, 0);
@@ -227,7 +227,7 @@ test('a rich v2 place imports variants as separate items and skips unpriced ones
   for (const n of ['Chicken Biriyani (Full)', 'Chicken Biriyani (Half)', 'Chicken Curry (Breakfast)', 'Gheerice Combo (Chicken / Beef)']) assert.ok(items.some(i => i.name === n), n);
   assert.ok(!items.some(i => i.name.startsWith('Fish Curry')), 'seasonal items without a price are not imported');
   const app = new AppStore(); app.db = { save: async () => {} };
-  await app.create('Crew', 'Host', true);
+  app.startRoom = () => {}; await app.create('Crew', 'Host');
   const result = await app.importLibraryPlace(place, 'in/kl/ernakulam');
   assert.equal(result.added, 97);
   const menu = app.data.state.menu;
