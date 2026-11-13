@@ -1,7 +1,7 @@
 import { validCode, uid } from './config.js';
 
 const MAX_MESSAGE = 4 * 1024 * 1024;
-export const PUBLIC_INTENTS = new Set(['member.rename', 'member.remove', 'orderer.set', 'menu.upsert',
+export const PUBLIC_INTENTS = new Set(['member.rename', 'member.remove', 'orderer.set', 'menu.upsert', 'item.price',
   'menu.delete', 'menu.create', 'menu.rename', 'menu.remove', 'menu.activate', 'menu.source', 'pick.set', 'order.lock', 'order.unlock', 'bill.set', 'payment.set',
   'round.finish', 'history.payment', 'group.currency']);
 

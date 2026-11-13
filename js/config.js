@@ -7,12 +7,13 @@ export const DEFAULT_CONFIG = {
 };
 export const ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
 // Shown in Settings. Bump with the service-worker cache version on release.
-export const APP_VERSION = '2026.11.13-1';
+export const APP_VERSION = '2026.11.13-3';
 // Multi-menu writes require the same protocol on every peer. Storage remains
 // schema 1 with an additive migration; old app versions must not drop menu IDs.
 // v3: menus can record the library place they were imported from.
 // v4: library places have their own ids (not only OSM refs) and 7 categories.
-export const PROTOCOL_VERSION = 4;
+// v5: items carry `popularity`; host/orderer can set prices while locked.
+export const PROTOCOL_VERSION = 5;
 
 // MENU LIBRARY HOOK. Volunteer-maintained CC0 menu data (static JSON).
 // DATA_BASE_URL can be overridden per device in Settings; the service worker
@@ -35,10 +36,11 @@ export function validateDataBaseUrl(value) {
   return url.href.replace(/\/+$/, '');
 }
 export const CATEGORIES = ['Tea', 'Snacks', 'Meal', 'Other'];
+// The basic menu every new session starts with. Prices are 0: the host sets
+// them (Costs tab) before entering the bill. [name, category, popularity]
 export const PRESETS = [
-  ['Chai', 'Tea'], ['Masala Chai', 'Tea'], ['Ginger Chai', 'Tea'],
-  ['Black Tea', 'Tea'], ['Coffee', 'Tea'], ['Biscuits', 'Snacks'],
-  ['Samosa', 'Snacks'], ['Vada', 'Snacks'], ['Bun Maska', 'Snacks'],
+  ['Tea', 'Tea', 100], ['Coffee', 'Tea', 95], ['Black Tea', 'Tea', 80],
+  ['Black Coffee', 'Tea', 75], ['Lime Tea', 'Tea', 70], ['Snack', 'Snacks', 60],
 ];
 export const uid = () => crypto.randomUUID();
 

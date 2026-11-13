@@ -89,7 +89,7 @@ export class AppStore {
     if (!validCode(code) || this.data.state) throw new Error('Invalid room invitation.');
     this.data.targetCode = code; this.emit();
   }
-  async create(name, displayName) {
+  async create(name, displayName, { starter = true } = {}) {
     if (this.data.state) throw new Error('Leave your current group in Settings first.');
     const code = roomCode(), id = this.data.identity.id;
     this.data.state = newGroup({ id: uid(), code, name, memberId: id, memberName: displayName, roundId: uid() });
@@ -98,6 +98,7 @@ export class AppStore {
     this.data.credentials[id] = this.data.identity.token;
     this.ui.hostOnline = true; this.ui.tab = 'lobby'; this.freshRoom = true; this.collisions = 0;
     await this.persist(); this.emit();
+    if (starter) await this.presets();
     this.startRoom();
     this.emit();
   }
@@ -385,15 +386,22 @@ export class AppStore {
     for (const item of items) {
       const existing = this.view().state.menu.find(i => i.menuId === target.id && i.name.normalize('NFKC').toLowerCase() === item.name.trim().normalize('NFKC').toLowerCase());
       if (existing && skipExisting) continue;
-      const saved = await this.dispatch('menu.upsert', { id: existing?.id || uid(), menuId: target.id, name: item.name, price: item.price, category: item.category });
+      const saved = await this.dispatch('menu.upsert', { id: existing?.id || uid(), menuId: target.id, name: item.name, price: item.price, category: item.category,
+        ...(item.popularity ? { popularity: item.popularity } : {}) });
       if (!saved) throw new Error('Some items could not be saved. Check the message above and try again.');
       existing ? updated++ : added++;
     }
     return { added, updated, menuId: target.id };
   }
-  // Optional one-tap starter: the classic tea-break items at price 0.
+  // The basic menu: generic items at price 0, most-ordered first.
   presets(menuId) {
-    return this.importMenu(PRESETS.map(([name, category]) => ({ name, category, price: 0 })), { menuId, title: 'Tea break', skipExisting: true });
+    return this.importMenu(PRESETS.map(([name, category, popularity]) => ({ name, category, price: 0, popularity })), { menuId, title: 'Basic menu', skipExisting: true });
+  }
+  // Wipe this device's group (menus, picks, history, members) and host a
+  // brand-new one with the basic menu. Identity and preferences are kept.
+  async newSession(groupName, displayName = this.data.identity.name) {
+    await this.leave();
+    await this.create(groupName, displayName);
   }
   suggest(reducedMotion = false) {
     const state = this.view().state;

@@ -1,6 +1,6 @@
 // Bump this version whenever any app-shell file changes. Cache installation is
 // atomic: one missing dependency fails installation rather than half-caching.
-const CACHE = 'chaikadi-shell-v12';
+const CACHE = 'chaikadi-shell-v14';
 // The ~7 MB menu reader (OCR) is NOT part of the shell: it is cached on first
 // use in its own cache, which survives shell updates. Bump only when
 // vendor/ocr/ files change.
@@ -21,7 +21,8 @@ const SHELL = [
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)));
 });
-// Updates wait until the user taps "Update now" in the app.
+// Updates download in the background and the app applies them on its own
+// when idle or in the background (see main.js).
 self.addEventListener('message', event => {
   if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });

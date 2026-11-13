@@ -12,6 +12,7 @@
   --page: #FFFFFF; --ink: #000000; --muted: #4D4D4D; --line: #8C8C8C;
   --receipt: #FBF6E9; --receipt-ink: #111111;
   --yellow: #FFE066; --blue: #9FCBFF; --green: #A7E3A0; --crayon-ink: #111111;
+  --red: #C4211A; /* only for "Start new session" (white text) */
   --font: "Atkinson Hyperlegible Mono", "Noto Serif Malayalam", ui-monospace, "Courier New", monospace;
   --receipt-font: "Courier Prime", "Noto Serif Malayalam", "Courier New", monospace;
   --rule: 2px solid var(--ink);
@@ -58,6 +59,12 @@ button.primary, button.outbound, .button.outbound { border-color: var(--crayon-i
 button:active:not(:disabled) { transform: translateY(1px); }
 button.quiet { border-color: transparent; padding: 8px 4px; min-height: 48px; text-decoration: underline; text-underline-offset: 5px; }
 button.danger { border-style: dashed; }
+/* The one red control: wipes the device's group and starts over. */
+button.new-session { margin-top: 28px; min-height: 64px; background: var(--red); border-color: var(--crayon-ink); color: #FFFFFF; border-radius: 2px 3px 2px 4px; }
+:root[data-theme="dark"] button.new-session { border-color: var(--ink); }
+.search { position: relative; display: flex; align-items: center; margin-bottom: 20px; }
+.search input { padding-right: 56px; }
+.search .icon-button { position: absolute; right: 4px; text-decoration: none; }
 button:disabled, .button.disabled { color: var(--muted); background: transparent; background-image: none; border: 2px dashed var(--line); cursor: not-allowed; transform: none; }
 button.back { border: 0; padding: 0; min-height: 48px; justify-content: flex-start; margin-bottom: 8px; }
 .icon { display: inline-block; flex-shrink: 0; vertical-align: middle; }

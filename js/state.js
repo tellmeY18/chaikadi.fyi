@@ -8,6 +8,7 @@ const text = (value, max, label) => {
 };
 const idString = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,80}$/.test(value);
 const money = value => Number.isSafeInteger(value) && value >= 0 && value <= 100000000;
+const popularity = value => value === undefined || (Number.isInteger(value) && value >= 0 && value <= 1000);
 const sameName = (a, b) => a.normalize('NFKC').toLowerCase() === b.normalize('NFKC').toLowerCase();
 
 // Where an imported menu came from: a snapshot of the library prices (in
@@ -63,6 +64,24 @@ export function migrate(state) {
 }
 
 export const activeItems = state => state.menu.filter(i => i.menuId === state.activeMenuId);
+// Most-ordered first: an item's declared `popularity` (0–1000, part of the
+// menu schema) plus how often the group has ordered it in finished rounds.
+export function orderCounts(state) {
+  const counts = new Map();
+  for (const round of state.history || []) for (const pick of round.picks || []) counts.set(pick.itemId, (counts.get(pick.itemId) || 0) + pick.qty);
+  return counts;
+}
+export function rankItems(state, items) {
+  const counts = orderCounts(state);
+  const score = item => (item.popularity || 0) + 10 * (counts.get(item.id) || 0);
+  return items.map((item, index) => ({ item, index, score: score(item) }))
+    .sort((a, b) => b.score - a.score || a.index - b.index).map(x => x.item);
+}
+const fold = value => value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+export function searchItems(items, query = '') {
+  const words = fold(query).split(/\s+/).filter(Boolean);
+  return words.length ? items.filter(item => words.every(w => fold(item.name).includes(w))) : items;
+}
 export const activeMenu = state => state.menus.find(m => m.id === state.activeMenuId) || null;
 
 export function subtotal(state, memberId) {
@@ -212,7 +231,7 @@ export function reduce(state, intent) {
       break;
     }
     case 'menu.upsert': {
-      assert(idString(p.id) && money(p.price) && CATEGORIES.includes(p.category), 'Enter a valid item, price and category.');
+      assert(idString(p.id) && money(p.price) && CATEGORIES.includes(p.category) && popularity(p.popularity), 'Enter a valid item, price and category.');
       const index = s.menu.findIndex(i => i.id === p.id);
       // Old clients omit menuId: keep the item's menu, else use the active one.
       const menuId = p.menuId || s.menu[index]?.menuId || s.activeMenuId;
@@ -220,9 +239,24 @@ export function reduce(state, intent) {
       assert(index < 0 || s.menu[index].menuId === menuId, 'Items cannot be moved between menus. Add a new item instead.');
       if (menuId === s.activeMenuId || s.menu[index]?.menuId === s.activeMenuId) open();
       const item = { id: p.id, name: text(p.name, 60, 'Item name'), price: p.price, category: p.category, menuId };
+      const rank = p.popularity ?? s.menu[index]?.popularity;
+      if (rank) item.popularity = rank;
       assert(index >= 0 || s.menu.filter(i => i.menuId === menuId).length < 200, 'A menu can contain up to 200 items.');
       if (index >= 0) s.menu[index] = item;
       else s.menu.push(item);
+      break;
+    }
+    case 'item.price': {
+      // Starter items cost 0: the host (or orderer) declares prices, also
+      // while the order is locked, until the bill is entered.
+      assert(host || orderer, 'Only the host or orderer can set prices.');
+      assert(Array.isArray(p.prices) && p.prices.length <= 200, 'Invalid prices.');
+      assert(s.group.status === 'open' || s.round.actualTotal === null, 'Unlock the order to change prices after the bill is entered.');
+      for (const entry of p.prices) {
+        const item = s.menu.find(i => i.id === entry?.id && i.menuId === s.activeMenuId);
+        assert(item && money(entry.price), 'Enter a valid price.');
+        item.price = entry.price;
+      }
       break;
     }
     case 'menu.delete':

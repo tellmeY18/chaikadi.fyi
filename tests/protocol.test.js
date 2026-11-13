@@ -31,9 +31,9 @@ test('host authenticates reconnect token and refuses identity spoofing', async (
   assert.equal(reconnected.link.memberId, guest.id);
   assert.equal(app.data.state.members.length, 2);
 });
-test('clashing names are auto-suffixed without adding default items', async () => {
+test('clashing names are auto-suffixed; a new group ships the basic menu', async () => {
   const app = await host();
-  assert.equal(app.data.state.menu.length, 0);
+  assert.deepEqual(app.data.state.menu.map(i => [i.name, i.price]), [['Tea', 0], ['Coffee', 0], ['Black Tea', 0], ['Black Coffee', 0], ['Lime Tea', 0], ['Snack', 0]]);
   const a = await join(app, uid(), uid(), 'Sunny Otter'), b = await join(app, uid(), uid(), 'sunny otter');
   assert.ok(a.link.memberId && b.link.memberId);
   assert.deepEqual(app.data.state.members.map(m => m.name).slice(1), ['Sunny Otter', 'sunny otter 2']);
@@ -92,7 +92,7 @@ test('host rolls back unsaved changes rather than acknowledging them as accepted
   const version = app.data.state.group.version;
   app.db.save = async () => { throw new Error('Storage full'); };
   await app.receive(guest.link, { type: 'intent', payload: { id: uid(), type: 'menu.upsert', senderId: guest.id, payload: { id: 'chai', name: 'Chai', price: 0, category: 'Tea' } } });
-  assert.equal(app.data.state.group.version, version); assert.equal(app.data.state.menu.length, 0);
+  assert.equal(app.data.state.group.version, version); assert.ok(!app.data.state.menu.some(i => i.id === 'chai'));
   assert.match(app.sent.at(-1).message.payload.error, /Storage full/);
 });
 test('old clients cannot drop menu IDs when joining a multi-menu host', async () => {

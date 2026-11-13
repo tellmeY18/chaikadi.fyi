@@ -1,7 +1,7 @@
 import { h, render, Component } from '../vendor/preact.module.js';
 import htm from '../vendor/htm.module.js';
 import { CATEGORIES, uid, funGroup, validCode, DATA_REPO_URL, SUGGEST_ENDPOINT, APP_VERSION } from './config.js';
-import { costs, debts, activeItems, activeMenu, libraryChanges } from './state.js';
+import { costs, debts, activeItems, activeMenu, libraryChanges, rankItems, searchItems } from './state.js';
 import { buildSuggestion, suggestionIssueUrl, sendSuggestion } from './data.js';
 import { LibrarySheet } from './library-ui.js';
 import { drawQR, scanQR } from './qr.js';
@@ -140,7 +140,14 @@ class App extends Component {
     try { localStorage.setItem('chaikadi-theme', theme); } catch { /* storage blocked */ }
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#000000' : '#FFFFFF');
   }
-  go(tab) { this.setState({ appMenu: false, editing: false }); this.props.store.setTab(tab); window.scrollTo({ top: 0 }); }
+  go(tab) { this.setState({ appMenu: false, editing: false, query: '' }); this.props.store.setTab(tab); window.scrollTo({ top: 0 }); }
+  search(count) {
+    const query = this.state.query || '';
+    return html`<div class="search"><label class="sr-only" for="item-search">${t('searchItems')}</label>
+      <input id="item-search" type="search" placeholder=${t('searchItems')} autocomplete="off" enterkeyhint="search" value=${query} onInput=${e => this.setState({ query: e.currentTarget.value })}/>
+      ${query && html`<button class="quiet icon-button" aria-label=${t('clearSearch')} onClick=${() => this.setState({ query: '' })}><${Icon} name="close"/></button>`}
+      ${query && html`<p class="sr-only" role="status">${t('itemCount', count)}</p>`}</div>`;
+  }
   open(sheet) { this.setState({ sheet, formError: '' }); }
   close() { this.setState({ sheet: null, formError: '' }); }
   async action(type, payload, success) {
@@ -213,6 +220,7 @@ class App extends Component {
         ${host && s.group.ordererId !== s.group.hostId && html`<button onClick=${() => this.action('orderer.set', { id: s.group.hostId })}>${t('hostOrders')}</button>`}
       </section>
       <button class="primary full" onClick=${() => this.go(s.picks.some(p => p.memberId === v.identity.id) || s.menu.length ? 'picks' : 'menu')}>${t('goMenu')}</button>
+      <button class="new-session full" onClick=${() => this.confirm(t('newSessionConfirm'), t('newSession'), () => this.props.store.newSession(funGroup()))}><${Icon} name="refresh"/>${t('newSession')}</button>
     </section>`;
   }
   menu(v) {
@@ -220,8 +228,9 @@ class App extends Component {
     const viewing = s.menus.find(m => m.id === this.state.viewMenu) || activeMenu(s) || s.menus[0];
     const isActive = viewing?.id === s.activeMenuId, locked = s.group.status !== 'open' && isActive;
     const canChoose = [s.group.hostId, s.group.ordererId].includes(v.identity.id);
-    const items = s.menu.filter(i => i.menuId === viewing?.id);
-    const show = id => this.setState({ viewMenu: id, editing: false });
+    const all = s.menu.filter(i => i.menuId === viewing?.id);
+    const items = searchItems(rankItems(s, all), this.state.query);
+    const show = id => this.setState({ viewMenu: id, editing: false, query: '' });
     return html`<section>
       <div class="section-heading with-tools"><h1>${t('menu')}</h1><div class="tools">
         ${viewing && html`<button class="icon-button" aria-label=${t(this.state.editing ? 'done' : 'editMenu')} aria-pressed=${this.state.editing} onClick=${() => this.setState({ editing: !this.state.editing })}><${Icon} name=${this.state.editing ? 'check' : 'edit'}/></button>`}
@@ -231,7 +240,9 @@ class App extends Component {
       ${viewing && this.state.editing && html`<div class="actions"><button onClick=${() => this.open({ kind: 'menuName', menu: viewing })}><${Icon} name="edit"/>${t('rename')}</button><button class="danger" disabled=${locked || isActive && !canChoose} onClick=${() => this.confirm(t('deleteMenuConfirm', viewing.name), t('delete'), () => this.action('menu.remove', { id: viewing.id }))}><${Icon} name="trash"/>${t('deleteMenu')}</button></div>`}
       ${locked && html`<p class="banner warning"><${Icon} name="lock"/>${t('menuLocked')}</p>`}
       ${!s.menus.length && html`<${Empty} text=${t('noMenus')} icon="menu"/>`}
-      ${s.menus.length > 0 && !items.length && html`<${Empty} text=${t('emptyMenu')} icon="menu"><button disabled=${locked} onClick=${() => this.run(async () => { const r = await this.props.store.presets(viewing?.id); if (r.menuId) show(r.menuId); })}>${t('commonItems')}</button><//>`}
+      ${s.menus.length > 0 && !all.length && html`<${Empty} text=${t('emptyMenu')} icon="menu"><button disabled=${locked} onClick=${() => this.run(async () => { const r = await this.props.store.presets(viewing?.id); if (r.menuId) show(r.menuId); })}>${t('commonItems')}</button><//>`}
+      ${all.length > 0 && this.search(items.length)}
+      ${all.length > 0 && !items.length && html`<p>${t('noMatches')}</p>`}
       ${CATEGORIES.map(category => {
         const list = items.filter(i => i.category === category);
         return list.length > 0 && html`<section class="menu-section"><h3>${t('categories')[category]}</h3><ul class="item-list">${list.map(item => html`<li key=${item.id}><div class="menu-row">${leader(item.name, item.price === 0 ? t('priceUnset') : money(item.price, s.group.currency))}
@@ -240,16 +251,19 @@ class App extends Component {
     </section>`;
   }
   picks(v) {
-    const s = v.state, locked = s.group.status !== 'open', items = activeItems(s);
+    const s = v.state, locked = s.group.status !== 'open', all = activeItems(s);
+    const items = searchItems(rankItems(s, all), this.state.query);
     const myPicks = s.picks.filter(p => p.memberId === v.identity.id);
     return html`<section>${heading(t('picks'))}
       ${locked && html`<p class="banner warning"><${Icon} name="lock"/>${t('lockedPicks')}</p>`}
-      ${items.length > 0 && html`<button class="quiet surprise" disabled=${locked} onClick=${() => { this.open({ kind: 'shuffle' }); this.props.store.suggest(matchMedia('(prefers-reduced-motion: reduce)').matches); }}><${Icon} name="dice"/>${t('undecided')}</button>`}
-      ${!items.length && html`<${Empty} text=${t('emptyMenu')} icon="menu"><button onClick=${() => this.go('menu')}>${t('menu')}</button><//>`}
+      ${all.length > 0 && html`<button class="quiet surprise" disabled=${locked} onClick=${() => { this.open({ kind: 'shuffle' }); this.props.store.suggest(matchMedia('(prefers-reduced-motion: reduce)').matches); }}><${Icon} name="dice"/>${t('undecided')}</button>`}
+      ${all.length > 0 && this.search(items.length)}
+      ${all.length > 0 && !items.length && html`<p>${t('noMatches')}</p>`}
+      ${!all.length && html`<${Empty} text=${t('emptyMenu')} icon="menu"><button onClick=${() => this.go('menu')}>${t('menu')}</button><//>`}
       ${items.map(item => {
         const pick = myPicks.find(p => p.itemId === item.id), qty = pick?.qty || 0;
         return html`<article key=${item.id} class=${`pick-row ${qty ? 'selected' : ''}`}>
-          ${leader(html`<button class="item-name" disabled=${locked} onClick=${() => this.open({ kind: 'note', item })} aria-label=${t('addNote', item.name)}>${item.name}</button>`, money(item.price, s.group.currency))}
+          ${leader(html`<button class="item-name" disabled=${locked} onClick=${() => this.open({ kind: 'note', item })} aria-label=${t('addNote', item.name)}>${item.name}</button>`, item.price === 0 ? t('priceUnset') : money(item.price, s.group.currency))}
           <div class="row">${pick?.note ? html`<p class="item-note"><${Icon} name="note" size=${20}/><span>${pick.note}</span></p>` : html`<span></span>`}<div class="stepper"><button aria-label=${t('removeOne', item.name)} disabled=${locked || !qty} onClick=${() => this.props.store.changePick(item.id, -1)}><${Icon} name="minus"/></button><output aria-label=${t('quantity', item.name, qty)} aria-live="polite">${qty}</output><button aria-label=${t('addOne', item.name)} disabled=${locked || qty === 99} onClick=${() => this.props.store.changePick(item.id, 1)}><${Icon} name="plus"/></button></div></div>
         </article>`;
       })}
@@ -276,6 +290,9 @@ class App extends Component {
   }
   costs(v) {
     const s = v.state, totals = costs(s), orderer = s.group.ordererId === v.identity.id, locked = s.group.status === 'locked', c = s.group.currency;
+    const pricer = orderer || s.group.hostId === v.identity.id;
+    const ordered = activeItems(s).filter(item => s.picks.some(p => p.itemId === item.id));
+    const pricesOpen = pricer && ordered.length > 0 && (!locked || s.round.actualTotal === null);
     const payment = person => {
       const paid = !!s.round.payments[person.id];
       if (person.id === s.group.ordererId) return html`<span class="r-note">${t('ownShare')}</span>`;
@@ -284,6 +301,11 @@ class App extends Component {
       return paid ? html`<span class="stamp">${t('paid')}</span>` : '';
     };
     return html`<section>${heading(t('costs'))}
+      ${pricesOpen && html`<form class="stack price-form" key=${`prices-${s.round.id}-${s.group.version}`} onSubmit=${e => { e.preventDefault(); const f = fields(e); this.run(() => this.action('item.price', { prices: ordered.map(item => ({ id: item.id, price: cents(f[`price-${item.id}`]) })) }, t('pricesSaved'))); }}>
+        <h2>${t('itemPrices')}</h2><p class="muted">${t('itemPricesHelp')}</p>
+        ${ordered.map(item => html`<label key=${item.id}>${item.name}<input name=${`price-${item.id}`} type="number" inputmode="decimal" min="0" max="1000000" step="0.01" placeholder="0" defaultValue=${item.price ? item.price / 100 : ''}/></label>`)}
+        <button>${t('savePrices')}</button>
+      </form>`}
       ${orderer && html`<form class="stack bill-form" key=${s.round.id} onSubmit=${e => { e.preventDefault(); const f = fields(e); this.run(() => this.action('bill.set', { actualTotal: cents(f.bill), splitMode: f.split }, t('billSaved'))); }}>
         ${!locked && html`<p class="banner warning"><${Icon} name="lock"/>${t('lockFirst')}</p>`}
         <label>${t('bill', c)}<input name="bill" required type="number" min="0" max="1000000" step="0.01" inputmode="decimal" defaultValue=${s.round.actualTotal === null ? '' : (s.round.actualTotal / 100).toFixed(2)} disabled=${!locked}/><small>${t('billHelp')}</small></label>
@@ -398,7 +420,7 @@ class App extends Component {
     if (p.kind === 'note') {
       const item = s.menu.find(i => i.id === p.item.id), pick = s.picks.find(pick => pick.memberId === v.identity.id && pick.itemId === p.item.id);
       const locked = s.group.status !== 'open' || !item || item.menuId !== s.activeMenuId;
-      return html`<${Sheet} title=${p.item.name} onClose=${close}>${error}<form class="stack" onSubmit=${e => { e.preventDefault(); const note = fields(e).note; submit(async () => { if (!pick && !await store.changePick(p.item.id, 1)) return false; const ok = await store.saveNote(p.item.id, note); if (ok) store.toast(t('noteSaved')); return ok; }); }}><label>${t('itemNote')}<textarea name="note" rows="3" maxlength="160" defaultValue=${pick?.note || ''} placeholder=${t('notePlaceholder')} disabled=${locked} autofocus></textarea></label>${!pick && html`<p class="muted">${t('noteAddsItem')}</p>`}<button class="primary" disabled=${locked}>${t('saveNote')}</button></form><//>`;
+      return html`<${Sheet} title=${p.item.name} onClose=${close}>${error}<form class="stack" onSubmit=${e => { e.preventDefault(); const note = fields(e).note; submit(async () => { if (!pick && !await store.changePick(p.item.id, 1)) return false; const ok = await store.saveNote(p.item.id, note); if (ok) store.toast(t('noteSaved')); return ok; }); }}><label>${t('itemNote')}<textarea name="note" rows="3" maxlength="160" defaultValue=${pick?.note || ''} placeholder=${p.item.name === 'Snack' ? t('snackPlaceholder') : t('notePlaceholder')} disabled=${locked} autofocus></textarea></label>${!pick && html`<p class="muted">${t('noteAddsItem')}</p>`}<button class="primary" disabled=${locked}>${t('saveNote')}</button></form><//>`;
     }
     return null;
   }
@@ -415,7 +437,7 @@ class App extends Component {
       ${this.state.appMenu && html`<div class="scrim" aria-hidden="true" onClick=${() => this.setState({ appMenu: false })}></div>`}
       <main id="main">
         ${!v.ready ? html`<p role="status">${t('opening')}</p>` : html`
-          ${v.updateReady && v.tab !== 'settings' && html`<div class="banner info update-banner" role="status"><${Icon} name="refresh"/><span><strong>${t('updateReady')}</strong> ${t('updateKeeps')}</span><button class="primary" disabled=${v.updating} onClick=${() => store.applyUpdate?.()}>${t(v.updating ? 'updating' : 'updateNow')}</button></div>`}
+          ${v.updating && html`<p class="sync-status" role="status">${t('updating')}</p>`}
           ${v.storageWarning && html`<div class="banner error" role="alert"><${Icon} name="alert"/><span><span class="sr-only">${t('error')}</span> ${v.storageWarning}</span></div>`}
           ${v.notice && html`<div class="banner error" role="alert"><${Icon} name="alert"/><span><span class="sr-only">${t('error')}</span> ${v.notice}</span><button class="quiet icon-button" aria-label=${t('dismiss')} onClick=${() => store.notice('')}><${Icon} name="close"/></button></div>`}
           ${v.role === 'member' && s && !v.hostOnline && html`<div class="banner warning" role="status"><${Icon} name="offline"/><span>${t('hostOffline')} ${t('queued', v.pending)}</span><button class="quiet" onClick=${() => store.startRoom()}>${t('retry')}</button></div>`}

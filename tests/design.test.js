@@ -11,16 +11,19 @@ const ratio = (a, b) => { const x = luminance(a), y = luminance(b); return (Math
 // are the only hues allowed. Everything else is greyscale.
 const CRAYONS = ['ffe066', '9fcbff', 'a7e3a0'];
 const PAPER = ['fbf6e9', 'ede7d6'];
+// Red is reserved for the destructive "Start new session" button (white text).
+const RED = 'c4211a';
 test('brand text/control pairs meet contrast and only semantic hues are used', () => {
   for (const [ink, page, muted, line] of [['000000', 'FFFFFF', '4D4D4D', '8C8C8C'], ['FFFFFF', '000000', 'B8B8B8', '767676']]) {
     assert.ok(ratio(ink, page) >= 7); assert.ok(ratio(muted, page) >= 4.5); assert.ok(ratio(line, page) >= 3);
   }
+  assert.ok(ratio('ffffff', RED) >= 4.5, 'white on red');
   for (const crayon of CRAYONS) assert.ok(ratio('111111', crayon) >= 7, `crayon ${crayon}`);
   for (const paper of PAPER) { assert.ok(ratio('111111', paper) >= 7); assert.ok(ratio('4D4D4D', paper) >= 4.5); }
   const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
   for (const [hex] of css.matchAll(/#[\da-fA-F]{6}\b/g)) {
     const h = hex.slice(1).toLowerCase();
-    if (CRAYONS.includes(h) || PAPER.includes(h)) continue;
+    if (CRAYONS.includes(h) || PAPER.includes(h) || h === RED) continue;
     assert.ok(h.slice(0, 2) === h.slice(2, 4) && h.slice(2, 4) === h.slice(4, 6), `${hex} is not greyscale`);
   }
 });
