@@ -204,6 +204,7 @@ section > section, form + form, form + details, details + section { margin-top: 
 .r-people > li > .leader { flex: 1; min-width: 0; }
 .r-pay { flex-shrink: 0; min-width: 0; }
 .r-note { font-size: .875rem; }
+.receipt-paper .r-item-note { margin: 0 0 6px 16px; font-size: .875rem; overflow-wrap: anywhere; }
 .r-button, .stamp { font-family: var(--receipt-font); color: var(--receipt-ink); border-color: var(--receipt-ink); background: transparent; min-height: 44px; padding: 6px 10px; font-size: .9375rem; }
 .stamp { display: inline-flex; align-items: center; border: 3px solid var(--receipt-ink); transform: rotate(-5deg); letter-spacing: .08em; font-weight: 700; }
 button.stamp:active:not(:disabled) { transform: rotate(-5deg) translateY(1px); }

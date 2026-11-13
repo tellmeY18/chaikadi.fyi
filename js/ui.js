@@ -24,12 +24,15 @@ function cents(value) {
   return Math.round(Number(value || 0) * 100);
 }
 const textLeader = (label, value) => `${label} ${'.'.repeat(Math.max(2, 36 - [...label].length - [...value].length))} ${value}`;
+// "2 x less sugar (Asha)" for each pick of this item that has a note.
+const itemNotes = (s, itemId) => s.picks.filter(p => p.itemId === itemId && p.note)
+  .map(p => `${p.qty > 1 ? `${p.qty} x ` : ''}${p.note} (${nameOf(s, p.memberId)})`);
 export function orderText(s) {
   const c = s.group.currency, totals = costs(s);
   const lines = [s.group.name, activeMenu(s)?.name || '', s.group.status === 'locked' ? t('locked') : t('open'), ''];
   for (const item of activeItems(s)) {
     const qty = s.picks.filter(p => p.itemId === item.id).reduce((n, p) => n + p.qty, 0);
-    if (qty) lines.push(textLeader(`${item.name} x ${qty}`, money(qty * item.price, c)));
+    if (qty) lines.push(textLeader(`${item.name} x ${qty}`, money(qty * item.price, c)), ...itemNotes(s, item.id).map(n => `  - ${n}`));
   }
   lines.push('====================================', textLeader(t('estimated'), money(totals.estimatedTotal, c)), '', t('perPerson'));
   for (const person of totals.people.filter(p => p.participating)) {
@@ -276,7 +279,7 @@ class App extends Component {
     return html`<section>${heading(t('order'))}
       ${receipt(html`<p class="r-strong">${s.group.name}</p><p>${activeMenu(s)?.name || ''}</p>${s.group.status === 'locked' && html`<p class="r-strong">${t('locked')}</p>`}<p class="r-gap"></p>
         ${!lines.length && html`<p>${t('noPicks')}</p>`}
-        ${lines.map(([item, qty]) => leader(`${item.name} x ${qty}`, money(qty * item.price, c)))}
+        ${lines.map(([item, qty]) => html`${leader(`${item.name} x ${qty}`, money(qty * item.price, c))}${itemNotes(s, item.id).map(n => html`<p class="r-item-note">- ${n}</p>`)}`)}
         <p class="r-rule" aria-hidden="true"></p>${leader(t('estimated'), money(totals.estimatedTotal, c), 'r-strong')}
         <p class="r-gap"></p><p>${t('orderer')}: ${nameOf(s, s.group.ordererId)}</p>`)}
       ${s.picks.length > 0 && html`<details class="breakdown"><summary>${t('perPerson')}</summary>${s.members.map(person => {
