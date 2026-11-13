@@ -69,6 +69,8 @@ export class AppStore {
     }
     this.ui.ready = true; this.emit();
     await this.persist();
+    // Groups saved before the basic menu shipped get it once, if they have no menus.
+    if (this.data.role === 'host' && this.data.state && !this.data.state.menus.length) await this.presets().catch(() => {});
     if (this.data.role && this.data.targetCode) this.startRoom();
     this.heartbeat = setInterval(() => this.tick(), 5000);
     // Invite link with no saved group: join straight away with the prefilled

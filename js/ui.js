@@ -239,7 +239,7 @@ class App extends Component {
       ${viewing && !isActive && (canChoose ? html`<button disabled=${s.group.status !== 'open' || !items.length} onClick=${() => { const use = () => this.action('menu.activate', { id: viewing.id }); if (s.picks.length) this.confirm(t('switchMenu', viewing.name), t('useMenu'), use); else use(); }}>${t('useMenu')}</button>` : html`<p>${t('ordererChooses')}</p>`)}
       ${viewing && this.state.editing && html`<div class="actions"><button onClick=${() => this.open({ kind: 'menuName', menu: viewing })}><${Icon} name="edit"/>${t('rename')}</button><button class="danger" disabled=${locked || isActive && !canChoose} onClick=${() => this.confirm(t('deleteMenuConfirm', viewing.name), t('delete'), () => this.action('menu.remove', { id: viewing.id }))}><${Icon} name="trash"/>${t('deleteMenu')}</button></div>`}
       ${locked && html`<p class="banner warning"><${Icon} name="lock"/>${t('menuLocked')}</p>`}
-      ${!s.menus.length && html`<${Empty} text=${t('noMenus')} icon="menu"/>`}
+      ${!s.menus.length && html`<${Empty} text=${t('noMenus')} icon="menu"><button onClick=${() => this.run(async () => { const r = await this.props.store.presets(); if (r.menuId) show(r.menuId); })}>${t('commonItems')}</button><//>`}
       ${s.menus.length > 0 && !all.length && html`<${Empty} text=${t('emptyMenu')} icon="menu"><button disabled=${locked} onClick=${() => this.run(async () => { const r = await this.props.store.presets(viewing?.id); if (r.menuId) show(r.menuId); })}>${t('commonItems')}</button><//>`}
       ${all.length > 0 && this.search(items.length)}
       ${all.length > 0 && !items.length && html`<p>${t('noMatches')}</p>`}
