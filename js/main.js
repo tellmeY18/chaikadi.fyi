@@ -3,6 +3,8 @@ import { mount } from './ui.js';
 
 const store = new AppStore();
 mount(store, document.getElementById('app'));
+window.chaikadiStarted = true;
+try { sessionStorage.removeItem('chaikadi-recovered'); } catch { /* storage blocked */ }
 store.boot(new URL(location.href).searchParams.get('room')?.toUpperCase() || '')
   .catch(error => store.notice(`Could not restore local data: ${error.message}`));
 
@@ -19,7 +21,7 @@ window.addEventListener('pageshow', event => { if (event.persisted) store.foregr
 // interrupted mid-action. Restarting is needed to run new code; saved groups,
 // picks and queued changes are restored and connections reconnect on their own.
 // "Update now" in Settings stays as a manual fallback.
-let registration = null, lastCheck = 0, applying = false, lastInput = Date.now();
+let registration = null, lastCheck = 0, applying = false, takenOver = false, lastInput = Date.now();
 const IDLE_MS = 60 * 1000, LOADED = Date.now();
 let touched = false;
 for (const type of ['pointerdown', 'keydown', 'input', 'scroll']) addEventListener(type, () => { lastInput = Date.now(); touched = true; }, { passive: true, capture: true });
@@ -45,20 +47,28 @@ async function checkForUpdate({ force = false } = {}) {
   // A found update finishes installing asynchronously; give it a moment.
   for (let i = 0; i < 40 && registration.installing; i++) await new Promise(r => setTimeout(r, 250));
   markReady();
-  return registration.waiting ? 'ready' : 'current';
+  return registration.waiting || takenOver ? 'ready' : 'current';
 }
 store.checkForUpdate = () => checkForUpdate({ force: true });
 store.applyUpdate = async () => {
-  if (!registration?.waiting || applying) return;
+  if ((!registration?.waiting && !takenOver) || applying) return;
   applying = true; store.ui.updating = true; store.emit();
   await store.persist().catch(() => {});
+  if (takenOver) { location.reload(); return; }
   registration.waiting.postMessage({ type: 'SKIP_WAITING' });
   // Fallback if controllerchange never fires (e.g. worker already active).
   setTimeout(() => location.reload(), 4000);
 };
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.addEventListener('controllerchange', () => { if (applying) location.reload(); });
+  // New workers take over on install; this page still runs the old code, so
+  // restart into the new version at the next safe moment.
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (applying) { location.reload(); return; }
+    if (!hadController) return; // first install: this page is already current
+    takenOver = true; store.ui.updateReady = true; store.emit(); autoUpdate();
+  });
   navigator.serviceWorker.register('./sw.js').then(async reg => {
     registration = reg;
     await navigator.serviceWorker.ready;

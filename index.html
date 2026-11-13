@@ -14,6 +14,17 @@
   <link rel="icon" type="image/svg+xml" href="./icons/icon.svg">
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
   <script>try { document.documentElement.dataset.theme = localStorage.getItem('chaikadi-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch { /* storage blocked */ }</script>
+  <script>
+    // If the app failed to start (e.g. mismatched cached files after an
+    // update), fetch the latest version and reload once.
+    setTimeout(function () {
+      if (window.chaikadiStarted || !navigator.serviceWorker) return;
+      try { if (sessionStorage.getItem('chaikadi-recovered')) return; sessionStorage.setItem('chaikadi-recovered', '1'); } catch (e) { return; }
+      navigator.serviceWorker.addEventListener('controllerchange', function () { location.reload(); });
+      navigator.serviceWorker.getRegistration().then(function (r) { return r && r.update(); }).catch(function () {});
+      setTimeout(function () { location.reload(); }, 6000);
+    }, 5000);
+  </script>
   <link rel="stylesheet" href="./styles.css">
   <script defer src="./vendor/peerjs.min.js"></script>
   <script defer src="./vendor/qrcode.js"></script>

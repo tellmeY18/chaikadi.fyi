@@ -1,6 +1,6 @@
 // Bump this version whenever any app-shell file changes. Cache installation is
 // atomic: one missing dependency fails installation rather than half-caching.
-const CACHE = 'chaikadi-shell-v17';
+const CACHE = 'chaikadi-shell-v18';
 // The ~7 MB menu reader (OCR) is NOT part of the shell: it is cached on first
 // use in its own cache, which survives shell updates. Bump only when
 // vendor/ocr/ files change.
@@ -19,7 +19,12 @@ const SHELL = [
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png',
 ];
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)));
+  // cache: 'reload' skips the browser's HTTP cache. Without it Safari can mix
+  // a fresh file with hours-old ones (the CDN may send max-age), breaking imports.
+  // skipWaiting: a broken page cannot ask for the update, so take over at once.
+  event.waitUntil(caches.open(CACHE)
+    .then(cache => cache.addAll(SHELL.map(path => new Request(path, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 // Updates download in the background and the app applies them on its own
 // when idle or in the background (see main.js).
@@ -73,5 +78,5 @@ self.addEventListener('fetch', event => {
     }));
     return;
   }
-  event.respondWith(caches.open(CACHE).then(async cache => (await cache.match(event.request, { ignoreSearch: true })) || fetch(event.request)));
+  event.respondWith(caches.open(CACHE).then(async cache => (await cache.match(event.request, { ignoreSearch: true })) || fetch(event.request, { cache: 'no-cache' })));
 });
