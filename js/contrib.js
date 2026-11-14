@@ -133,18 +133,24 @@ export function createContributor({ baseUrl = EATSIGHTS_BASE_URL, storage = idbS
   async function reset() { await storage.set(KEY, null); await storage.set(OUTBOX, []); keyPromise = null; }
   async function info() { const k = await storage.get(KEY); return k?.keyId ? { keyId: k.keyId, createdAt: k.createdAt, registered: k.registered } : null; }
 
-  // New stall (proposal 0001 entity submission). place: client fields only.
-  async function createPlace(place) {
+  // Entity submissions (proposal 0001): [{ entity_type, entity }] -> per-item results.
+  async function createEntities(list) {
     const k = await register();
-    const submission = await sign({ id: newId('es_'), schema_version: '0.4', op: 'create', entity_type: 'place', entity: place,
-      submitted_at: now().toISOString(), contributor: { key_id: k.keyId }, license: 'CC0-1.0' });
-    const reply = await post('/v1/entities', [submission]);
-    const r = reply?.results?.[0];
-    if (r?.status === 'accepted' || r?.status === 'duplicate') return { id: place.id, status: r.status };
-    throw new ContribError('rejected', r?.problem?.detail || r?.problem?.title || 'Eatsights did not accept this stall.');
+    const signed = [];
+    for (const { entity_type, entity } of list) signed.push(await sign({ id: newId('es_'), schema_version: '0.4', op: 'create', entity_type, entity,
+      submitted_at: now().toISOString(), contributor: { key_id: k.keyId }, license: 'CC0-1.0' }));
+    const reply = await post('/v1/entities', signed);
+    return list.map((_, i) => { const r = reply?.results?.find(x => x.index === i) ?? reply?.results?.[i];
+      return r?.status === 'accepted' || r?.status === 'duplicate' ? { status: r.status } : { status: 'rejected', reason: r?.problem?.detail || r?.problem?.title || 'Not accepted.' }; });
+  }
+  // New stall. place: client fields only.
+  async function createPlace(place) {
+    const [r] = await createEntities([{ entity_type: 'place', entity: place }]);
+    if (r.status === 'rejected') throw new ContribError('rejected', r.reason || 'Eatsights did not accept this stall.');
+    return { id: place.id, status: r.status };
   }
 
-  return { key, sign, register, observation, submit, flush, pending, discardPending, reset, info, createPlace };
+  return { key, sign, register, observation, submit, flush, pending, discardPending, reset, info, createPlace, createEntities };
 }
 
 let contributor = null;

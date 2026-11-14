@@ -1,5 +1,5 @@
-// Eatsights contribution UI: share sheet v2, results, one-tap checks, sold
-// out, wait time, quality score, contribution settings and "Add a stall".
+// Eatsights contribution UI: the one optional sheet per round (prices, sold
+// out, wait time, rating), item actions, contribution settings and "Add a stall".
 // Everything here is optional; nothing is sent while sharing is off.
 import { h, Component } from '../vendor/preact.module.js';
 import htm from '../vendor/htm.module.js';
@@ -19,19 +19,60 @@ const same = (a, b) => String(a).normalize('NFKC').trim().toLowerCase() === Stri
 export const sharingOn = view => view.preferences.shareEatsights !== false;
 export const esSource = menu => (menu?.source && isEatsightsPlace(menu.source.placeId) ? menu.source : null);
 
-// Group item names -> Eatsights ids, using the place's current menu.
+// Group item names -> Eatsights ids, using the place's current menu (cached
+// copy when offline). Returns the mapped place too, for its facts.
 async function resolve(source, names) {
   const place = await eatsights().placeMenu(source.placeId, source.city);
   const lines = place ? orderableItems(place) : [];
-  return { placeId: place?.es?.id || fromSlug(source.placeId, 'pl_'),
-    ids: names.map(name => { const hit = lines.find(l => same(l.name, name)) || lines.find(l => same(l.name.replace(/ \(.*\)$/, ''), name)); return hit ? fromSlug(hit.id, 'mi_') : null; }) };
+  const find = name => lines.find(l => same(l.name, name)) || lines.find(l => same(l.name.replace(/ \(.*\)$/, ''), name));
+  return { place, placeId: place?.es?.id || fromSlug(source.placeId, 'pl_'),
+    ids: names.map(name => { const hit = find(name); return hit ? fromSlug(hit.id, 'mi_') : null; }),
+    facts: names.map(name => { const hit = find(name); return hit ? place.es.items[hit.id] || null : null; }) };
 }
-// entries: [{ name, property, value, prompt? }] -> one result per entry.
+// Eatsights facts for the round's items (null for items Eatsights lacks).
+export async function roundFacts(source, names) {
+  try { return (await resolve(source, names)).facts; } catch { return names.map(() => undefined); }
+}
+const SECTION_KIND = { Tea: 'drinks', Snacks: 'snacks', Meal: 'meals', Other: 'other' };
+// Items the group added that Eatsights does not have yet: one section per
+// category (reusing the stall's own) and one menu item each.
+async function createItems(place, placeId, missing) {
+  const sections = new Map();
+  for (const s of place?.sections || []) {
+    const hit = Object.entries(SECTION_KIND).find(([category, kind]) => same(s.name, kind) || same(s.name, t('categories')[category]));
+    if (hit && !sections.has(hit[1]) && fromSlug(s.id, 'sc_')) sections.set(hit[1], fromSlug(s.id, 'sc_'));
+  }
+  const list = [], ids = [], at = [], sectionAt = new Map();
+  for (const item of missing) {
+    const kind = SECTION_KIND[item.category] || 'other';
+    if (!sections.get(kind)) {
+      const id = newId('sc_');
+      sections.set(kind, id);
+      sectionAt.set(kind, list.length);
+      list.push({ entity_type: 'section', entity: { id, place_id: placeId, labels: { en: t('categories')[item.category] || 'Menu' }, kind } });
+    }
+    const id = newId('mi_');
+    ids.push(id); at.push([list.length, kind]);
+    list.push({ entity_type: 'menu_item', entity: { id, place_id: placeId, section_id: sections.get(kind), labels: { en: item.name.slice(0, 80) } } });
+  }
+  const results = list.length ? await contrib().createEntities(list) : [];
+  const ok = i => i === undefined || results[i]?.status !== 'rejected';
+  return ids.map((id, i) => (ok(at[i][0]) && ok(sectionAt.get(at[i][1])) ? id : null));
+}
+// entries: [{ name, property, value, category?, prompt? }] -> one result per
+// entry. Price entries for items Eatsights lacks create those items first.
 export async function sendFacts(source, entries) {
-  const { placeId, ids } = await resolve(source, entries.map(e => e.name));
+  const { place, placeId, ids } = await resolve(source, entries.map(e => e.name));
+  const missing = entries.map((e, i) => (!ids[i] && e.property === 'price.amount' ? i : -1)).filter(i => i >= 0);
+  if (missing.length && placeId) {
+    const made = await createItems(place, placeId, missing.map(i => entries[i]));
+    missing.forEach((i, j) => { ids[i] = made[j]; });
+    // Other facts about a just-created item (sold out, rating) use its new id.
+    entries.forEach((e, i) => { if (!ids[i]) { const k = entries.findIndex((x, j) => ids[j] && same(x.name, e.name)); if (k >= 0) ids[i] = ids[k]; } });
+  }
   const c = contrib(), out = new Array(entries.length), signed = [], where = [];
   for (let i = 0; i < entries.length; i++) {
-    if (!ids[i] || !placeId) { out[i] = { status: 'rejected', reason: 'not on the Eatsights menu' }; continue; }
+    if (!ids[i] || !placeId) { out[i] = { status: 'rejected', reason: t('esNotOnMenu') }; continue; }
     signed.push(await c.observation({ property: entries[i].property, placeId, itemId: ids[i], value: entries[i].value, prompt: entries[i].prompt }));
     where.push(i);
   }
@@ -43,107 +84,72 @@ export const priceValue = cents => ({ amount_minor: cents, currency: 'INR', fulf
 
 const RESULT = { sent: ['check', false, () => t('esSent')], already: ['dup', true, () => t('esAlready')], rejected: ['close', false, r => t('esRejected', r.reason)], queued: ['clock', true, () => t('esQueued')] };
 const ResultChip = ({ result }) => { const [icon, dashed, text] = RESULT[result.status] || RESULT.rejected; return html`<span class=${`fresh-chip ${dashed ? 'dashed' : ''}`}><${Icon} name=${icon} size=${16}/>${text(result)}</span>`; };
-const Change = ({ change, currency, children }) => html`<div class="change-copy"><strong>${change.name}</strong>
-  <span class="change-diff"><s>${money(change.before, currency)}</s><${Icon} name="arrow" size=${16}/><strong>${money(change.price, currency)}</strong></span>${children}</div>`;
+const KIND_TEXT = { changed: null, new: 'esKindNew', contested: 'esKindContested', unconfirmed: 'esKindUnconfirmed', stale: 'esKindStale', old: 'esKindOld' };
 
-// "Share these price updates?" v2. Not now stays the main button.
-export class EsShareSheet extends Component {
-  constructor(props) { super(props); this.state = { picked: props.changes.map(() => true), busy: false, results: null }; }
-  async share() {
-    const { source, changes, store } = this.props;
-    const chosen = changes.filter((_, i) => this.state.picked[i]);
+// The one optional sheet per round (see prompts.js for when it shows).
+// Not now stays the main button; nothing is sent without "Send".
+export class EsRoundSheet extends Component {
+  constructor(props) {
+    super(props);
+    const { plan } = props;
+    this.state = { answers: plan.prices.map(p => (p.kind === 'changed' || p.kind === 'new' ? 'send' : 'same')), newPrices: {}, sold: plan.soldOut.map(() => true),
+      wait: null, scores: {}, busy: false, results: null };
+  }
+  entries() {
+    const { plan, items } = this.props, { answers, newPrices, sold, wait, scores } = this.state;
+    const category = name => items.find(i => same(i.name, name))?.category;
+    const out = [];
+    plan.prices.forEach((p, i) => {
+      const a = answers[i];
+      if (a === 'skip') return;
+      const price = a === 'changed' ? newPrices[i] : p.price;
+      if (Number.isInteger(price) && price >= 0) out.push({ name: p.name, label: p.name, property: 'price.amount', value: priceValue(price), category: category(p.name), prompt: p.kind === 'changed' || p.kind === 'new' ? undefined : 'one_tap' });
+    });
+    plan.soldOut.forEach((name, i) => { if (sold[i]) out.push({ name, label: `${name} · ${t('esSoldOut')}`, property: 'availability.observed', value: { state: 'sold_out' } }); });
+    if (wait) for (const p of items.slice(0, 5)) out.push({ name: p.name, label: `${p.name} · ${t('esWaitShort')}`, property: 'prep.wait_time', value: { seconds: wait, stage: 'order_to_served' }, hidden: true });
+    for (const [name, score] of Object.entries(scores)) if (score) out.push({ name, label: `${name} · ${score}/5`, property: 'quality.score', value: { score } });
+    return out;
+  }
+  async send() {
+    const entries = this.entries();
     this.setState({ busy: true });
     try {
-      const results = await sendFacts(source, chosen.map(c => ({ name: c.name, property: 'price.amount', value: priceValue(c.price) })));
-      this.setState({ busy: false, results, shown: chosen });
-    } catch (error) { this.setState({ busy: false }); store.notice(error.message); }
+      const results = await sendFacts(this.props.source, entries);
+      this.setState({ busy: false, results, sent: entries });
+      this.props.onOutcome('sent');
+    } catch (error) { this.setState({ busy: false }); this.props.store.notice(error.message); }
   }
-  render({ source, changes, view, currency, onClose, onSettings }) {
-    const { picked, busy, results, shown } = this.state, on = sharingOn(view);
+  render({ plan, currency, onClose, onOutcome }) {
+    const { answers, newPrices, sold, wait, scores, busy, results, sent } = this.state;
     if (results) {
       const queued = results.some(r => r.status === 'queued');
+      const shown = sent.map((e, i) => [e, results[i]]).filter(([e]) => !e.hidden);
       return html`<${Sheet} title=${t(queued ? 'esQueuedTitle' : 'esSentTitle')} onClose=${onClose}>
         ${queued && html`<div class="banner dashed" role="status"><${Icon} name="offline"/><span><strong>${t('esOffline')}</strong> ${t('esOfflineHint')}</span></div>`}
-        <ul class="change-list">${shown.map((c, i) => html`<li key=${c.name}><${Change} change=${c} currency=${currency}><${ResultChip} result=${results[i]}/><//></li>`)}</ul>
+        <ul class="change-list">${shown.map(([e, r]) => html`<li key=${e.label}><div class="change-copy"><strong>${e.label}</strong>${e.property === 'price.amount' && html`<span>${money(e.value.amount_minor, currency)}</span>`}<${ResultChip} result=${r}/></div></li>`)}</ul>
         <div class="sheet-actions"><button class="primary" onClick=${onClose}>${t('done')}</button>
           ${queued && html`<button class="danger" onClick=${async () => { await contrib().discardPending(); onClose(); }}>${t('esDontSend')}</button>`}</div><//>`;
     }
-    const count = picked.filter(Boolean).length;
-    return html`<${Sheet} title=${t('shareTitle')} onClose=${onClose}>
-      <p>${t('esShareIntro', source.name)}</p>
-      <ul class="change-list">${changes.map((c, i) => html`<li key=${c.name}><label class="check-row"><input type="checkbox" checked=${picked[i]} disabled=${!on}
-        onChange=${e => { const next = [...picked]; next[i] = e.currentTarget.checked; this.setState({ picked: next }); }}/><${Change} change=${c} currency=${currency}/></label></li>`)}</ul>
-      ${!on && html`<p class="muted">${t('esShareOff')}</p>`}
-      <div class="sheet-actions"><button class="primary" onClick=${onClose}>${t('notNow')}</button>
-        ${on ? html`<button class="outbound" disabled=${!count || busy} onClick=${() => this.share()}><${Icon} name="share"/>${busy ? t('esSending') : t('esShareN', count)}</button>`
-          : html`<button class="quiet" onClick=${onSettings}>${t('esOpenSettings')}</button>`}</div><//>`;
-  }
-}
-
-// Wait time after Finish round (prep.wait_time on each ordered item).
-export class WaitSheet extends Component {
-  constructor(props) { super(props); this.state = { seconds: null, busy: false }; }
-  async done() {
-    const { source, items, store, onNext } = this.props, seconds = this.state.seconds;
-    if (seconds !== null) {
-      this.setState({ busy: true });
-      try { await sendFacts(source, items.map(i => ({ name: i.name, property: 'prep.wait_time', value: { seconds, stage: 'order_to_served' } }))); store.toast(t('esThanks')); }
-      catch (error) { store.notice(error.message); }
-    }
-    onNext();
-  }
-  render({ onNext }) {
-    const { seconds, busy } = this.state;
-    return html`<${Sheet} title=${t('esWaitTitle')} onClose=${onNext}><p>${t('esWaitHint')}</p>
-      <div class="choice-row" role="group" aria-label=${t('esWaitTitle')}>${t('esWaits').map(([label, s]) => html`<button type="button" aria-pressed=${seconds === s} onClick=${() => this.setState({ seconds: seconds === s ? null : s })}>${label}</button>`)}</div>
-      <div class="sheet-actions"><button class="primary" disabled=${busy} onClick=${() => this.done()}>${t('done')}</button><button class="danger" onClick=${onNext}>${t('esSkip')}</button></div><//>`;
-  }
-}
-
-// 1–5 per item (quality.score). No text, by design.
-export class RateSheet extends Component {
-  constructor(props) { super(props); this.state = { scores: {}, busy: false }; }
-  async done() {
-    const { source, items, store, onClose } = this.props, scores = this.state.scores;
-    const chosen = items.filter(i => scores[i.name]);
-    if (chosen.length) {
-      this.setState({ busy: true });
-      try { await sendFacts(source, chosen.map(i => ({ name: i.name, property: 'quality.score', value: { score: scores[i.name] } }))); store.toast(t('esThanks')); }
-      catch (error) { store.notice(error.message); }
-    }
-    onClose();
-  }
-  render({ items, onClose }) {
-    const { scores, busy } = this.state;
-    return html`<${Sheet} title=${t('esRateTitle')} onClose=${onClose}><p>${t('esRateHint')}</p>
-      ${items.map(item => html`<fieldset class="rate-row" key=${item.name}><legend>${item.name}</legend><div class="choice-row five">${[1, 2, 3, 4, 5].map(n => html`<button type="button" aria-label=${t('esRate', item.name, n)} aria-pressed=${scores[item.name] === n}
-        onClick=${() => this.setState({ scores: { ...scores, [item.name]: scores[item.name] === n ? 0 : n } })}>${n}</button>`)}</div></fieldset>`)}
-      <div class="sheet-actions"><button class="primary" disabled=${busy} onClick=${() => this.done()}>${t('done')}</button><button class="danger" onClick=${onClose}>${t('esSkip')}</button></div><//>`;
-  }
-}
-
-// "Still Rs 10?" on the Order screen once the order is locked. Never blocking.
-export class OneTapCard extends Component {
-  constructor(props) { super(props); this.state = { answered: [], changing: false, busy: false }; }
-  async answer(item, cents) {
-    const { source, store } = this.props;
-    this.setState({ busy: true });
-    try { await sendFacts(source, [{ name: item.name, property: 'price.amount', value: priceValue(cents), prompt: 'one_tap' }]); store.toast(t('esThanks')); }
-    catch (error) { store.notice(error.message); }
-    this.skip(item);
-  }
-  skip(item) { this.setState({ answered: [...this.state.answered, item.id], changing: false, busy: false }); }
-  render({ items, currency }) {
-    const { answered, changing, busy } = this.state;
-    const item = items.find(i => i.price > 0 && !answered.includes(i.id));
-    if (!item) return null;
-    return html`<section class="card" aria-label=${t('esQuickCheck')}><p class="muted">${t('esQuickCheck')}</p><p><strong>${t('esStill', item.name, money(item.price, currency))}</strong></p>
-      ${changing ? html`<form class="with-dice" onSubmit=${e => { e.preventDefault(); const v = new FormData(e.currentTarget).get('price'); if (/^\d+(\.\d{1,2})?$/.test(v)) this.answer(item, Math.round(Number(v) * 100)); }}>
-          <label class="sr-only" for="es-new-price">${t('esNewPrice', item.name)}</label><input id="es-new-price" name="price" type="number" inputmode="decimal" min="0" step="0.01" required autofocus placeholder=${t('esNewPrice', item.name)}/><button disabled=${busy}>${t('save')}</button></form>`
-        : html`<div class="choice-row"><button disabled=${busy} onClick=${() => this.answer(item, item.price)}><${Icon} name="check" size=${18}/>${t('esYes')}</button>
-          <button disabled=${busy} onClick=${() => this.setState({ changing: true })}><${Icon} name="edit" size=${18}/>${t('esChanged')}</button>
-          <button class="danger" onClick=${() => this.skip(item)}>${t('esSkip')}</button></div>`}
-      <p class="muted">${t('esCheckNote')}</p></section>`;
+    const setAnswer = (i, a) => { const next = [...answers]; next[i] = a; this.setState({ answers: next }); };
+    const count = this.entries().length;
+    return html`<${Sheet} title=${t('esRoundTitle')} onClose=${() => { onOutcome('skipped'); onClose(); }}>
+      <p>${t('esRoundIntro')}</p>
+      ${plan.prices.length > 0 && html`<h3>${t('esPrices')}</h3><ul class="change-list">${plan.prices.map((p, i) => html`<li key=${p.name} data-kind=${p.kind}>
+        ${p.kind === 'changed' || p.kind === 'new'
+          ? html`<label class="check-row"><input type="checkbox" checked=${answers[i] !== 'skip'} onChange=${e => setAnswer(i, e.currentTarget.checked ? 'send' : 'skip')}/>
+              <div class="change-copy"><strong>${p.name}</strong>${p.kind === 'changed' ? html`<span class="change-diff"><s>${money(p.before, currency)}</s><${Icon} name="arrow" size=${16}/><strong>${money(p.price, currency)}</strong></span>` : html`<span class="change-diff"><strong>${money(p.price, currency)}</strong></span><small>${t('esKindNew')}</small>`}</div></label>`
+          : html`<div class="change-copy"><strong>${t('esStill', p.name, money(p.price, currency))}</strong><small>${t(KIND_TEXT[p.kind])}</small>
+              <div class="choice-row" role="group" aria-label=${p.name}>${[['same', 'esYes'], ['changed', 'esChanged'], ['skip', 'esSkip']].map(([a, k]) => html`<button type="button" aria-pressed=${answers[i] === a} onClick=${() => setAnswer(i, a)}>${t(k)}</button>`)}</div>
+              ${answers[i] === 'changed' && html`<label>${t('esNewPrice', p.name)}<input type="number" inputmode="decimal" min="0" step="0.01" autofocus
+                onInput=${e => { const v = e.currentTarget.value; this.setState({ newPrices: { ...newPrices, [i]: /^\d+(\.\d{1,2})?$/.test(v) ? Math.round(Number(v) * 100) : undefined } }); }}/></label>`}</div>`}
+      </li>`)}</ul>`}
+      ${plan.soldOut.length > 0 && html`<h3>${t('esSoldOut')}</h3><ul class="change-list">${plan.soldOut.map((name, i) => html`<li key=${name}><label class="check-row"><input type="checkbox" checked=${sold[i]}
+        onChange=${e => { const next = [...sold]; next[i] = e.currentTarget.checked; this.setState({ sold: next }); }}/><strong>${name}</strong></label></li>`)}</ul>`}
+      ${plan.wait && html`<fieldset><legend>${t('esWaitTitle')}</legend><div class="choice-row">${t('esWaits').map(([label, s]) => html`<button type="button" aria-pressed=${wait === s} onClick=${() => this.setState({ wait: wait === s ? null : s })}>${label}</button>`)}</div></fieldset>`}
+      ${plan.rate.length > 0 && html`<h3>${t('esRateTitle')}</h3>${plan.rate.map(name => html`<fieldset class="rate-row" key=${name}><legend>${name}</legend><div class="choice-row five">${[1, 2, 3, 4, 5].map(n => html`<button type="button" aria-label=${t('esRate', name, n)} aria-pressed=${scores[name] === n}
+        onClick=${() => this.setState({ scores: { ...scores, [name]: scores[name] === n ? 0 : n } })}>${n}</button>`)}</div></fieldset>`)}`}
+      <div class="sheet-actions"><button class="primary" onClick=${() => { onOutcome('skipped'); onClose(); }}>${t('notNow')}</button>
+        <button class="outbound" disabled=${!count || busy} onClick=${() => this.send()}><${Icon} name="share"/>${busy ? t('esSending') : t('esSendN', count)}</button></div><//>`;
   }
 }
 

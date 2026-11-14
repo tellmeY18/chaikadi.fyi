@@ -4,7 +4,8 @@ import { CATEGORIES, uid, funGroup, validCode, DATA_REPO_URL, SUGGEST_ENDPOINT, 
 import { costs, debts, activeItems, activeMenu, libraryChanges, rankItems, searchItems } from './state.js';
 import { buildSuggestion, suggestionIssueUrl, sendSuggestion } from './data.js';
 import { LibrarySheet } from './library-ui.js';
-import { EsShareSheet, WaitSheet, RateSheet, OneTapCard, EsItemSheet, ContribSettings, ResetKeySheet, AddStallSheet, sharingOn, esSource, sendFacts } from './eatsights-ui.js';
+import { EsRoundSheet, EsItemSheet, ContribSettings, ResetKeySheet, AddStallSheet, sharingOn, esSource, roundFacts } from './eatsights-ui.js';
+import { planRound, afterSheet, today } from './prompts.js';
 import { contrib } from './contrib.js';
 import { drawQR, scanQR } from './qr.js';
 import { t, money } from './strings.js';
@@ -298,7 +299,6 @@ class App extends Component {
       <div class="actions two order-actions"><button class="outbound" disabled=${!s.picks.length} onClick=${() => this.copy(orderText(s), t('orderCopied'))}><${Icon} name="copy"/>${t('copyOrder')}</button>
         ${orderer && (s.group.status === 'open' ? html`<button class="primary" disabled=${!s.picks.length} onClick=${() => this.action('order.lock', {})}><${Icon} name="lock"/>${t('lock')}</button>` : html`<button class="primary" onClick=${() => this.go('costs')}>${t('enterBill')}</button>`)}</div>
       ${orderer && s.group.status === 'locked' && html`<button class="quiet" onClick=${() => this.confirm(t('unlockConfirm'), t('unlock'), () => this.action('order.unlock', {}))}><${Icon} name="unlock"/>${t('unlock')}</button>`}
-      ${s.group.status === 'locked' && sharingOn(v) && esSource(activeMenu(s)) && lines.length > 0 && html`<${OneTapCard} key=${s.round.id} source=${esSource(activeMenu(s))} items=${lines.map(([item]) => item)} currency=${s.group.currency} store=${this.props.store}/>`}
     </section>`;
   }
   costs(v) {
@@ -377,11 +377,18 @@ class App extends Component {
     const ok = await this.action('round.finish', { nextRoundId: uid(), date: new Date().toISOString() }, t('roundSaved'));
     if (!ok || !source || source.sample) return;
     const es = esSource(activeMenu(s));
-    // Eatsights: share sheet (if prices changed), then the optional wait and
-    // quality prompts, only when sharing is on. Never automatic.
+    // Eatsights: at most one optional sheet, only when it asks something new
+    // (rules and tests: prompts.js). Nothing is sent without "Send".
     if (es) {
-      const after = sharingOn(this.state.view) && ordered.length ? { kind: 'wait', source: es, items: ordered } : null;
-      if (changes.length) this.open({ kind: 'esShare', source: es, changes, after }); else if (after) this.open(after);
+      const v = this.state.view, store = this.props.store;
+      const soldOut = this.soldOutToday(v).map(id => s.menu.find(i => i.id === id)?.name).filter(Boolean);
+      const items = activeItems(s).filter(item => s.picks.some(p => p.itemId === item.id)).map(item => ({ name: item.name, price: item.price, category: item.category,
+        before: es.items.find(x => x.name.toLowerCase() === item.name.toLowerCase())?.price }));
+      const facts = sharingOn(v) ? await roundFacts(es, items.map(i => i.name)) : [];
+      const { plan, history } = planRound({ isOrderer: s.group.ordererId === v.identity.id, sharing: sharingOn(v), source: es,
+        items: items.map((item, i) => ({ ...item, fact: facts[i] })), soldOut, history: v.preferences.esPrompts, date: today() });
+      await store.preferences({ esPrompts: history }).catch(() => {});
+      if (plan) this.open({ kind: 'esRound', plan, source: es, items });
       return;
     }
     if (changes.length) this.open({ kind: 'share', source, changes });
@@ -421,9 +428,8 @@ class App extends Component {
     if (p.kind === 'library') return html`<${LibrarySheet} key=${p.initialPlace || 'library'} store=${store} view=${v} initialPlace=${p.initialPlace} initialCity=${p.city} onClose=${close} suggest=${x => this.suggest(x)} onImported=${id => { this.setState({ viewMenu: id, editing: false }); close(); }}
       onNewMenu=${() => this.open({ kind: 'menuName' })} onAddStall=${city => this.open({ kind: 'addStall', city })}/>`;
     const toSettings = () => { close(); this.go('settings'); };
-    if (p.kind === 'esShare') return html`<${EsShareSheet} source=${p.source} changes=${p.changes} view=${v} store=${store} currency=${s?.group.currency || 'Rs'} onSettings=${toSettings} onClose=${() => (p.after ? this.open(p.after) : close())}/>`;
-    if (p.kind === 'wait') return html`<${WaitSheet} source=${p.source} items=${p.items} store=${store} onNext=${() => this.open({ kind: 'rate', source: p.source, items: p.items })}/>`;
-    if (p.kind === 'rate') return html`<${RateSheet} source=${p.source} items=${p.items} store=${store} onClose=${close}/>`;
+    if (p.kind === 'esRound') return html`<${EsRoundSheet} plan=${p.plan} source=${p.source} items=${p.items} store=${store} currency=${s?.group.currency || 'Rs'} onClose=${close}
+      onOutcome=${outcome => store.preferences({ esPrompts: afterSheet(store.view().preferences.esPrompts, p.plan, outcome, today()) }).catch(() => {})}/>`;
     if (p.kind === 'resetKey') return html`<${ResetKeySheet} store=${store} onClose=${close} onDone=${p.done}/>`;
     if (p.kind === 'addStall') return html`<${AddStallSheet} view=${v} city=${p.city} onClose=${close} onSettings=${toSettings}
       onUse=${(place, city) => this.open({ kind: 'library', initialPlace: place.id, city })}
@@ -440,9 +446,8 @@ class App extends Component {
           const ids = sold ? this.soldOutToday(v).filter(x => x !== item.id) : [...this.soldOutToday(v), item.id];
           await store.preferences({ soldOut: { date: new Date().toDateString(), ids } });
           close();
-          if (sold) return;
-          store.toast(t('esSoldOutDone', item.name));
-          if (sharingOn(v)) await sendFacts(esSource(activeMenu(s)), [{ name: item.name, property: 'availability.observed', value: { state: 'sold_out' } }]);
+          // Offered to Eatsights in the sheet at Finish, not sent now.
+          if (!sold) store.toast(t('esSoldOutDone', item.name));
         })}/>`;
     }
     if (p.kind === 'add') return html`<${Sheet} title=${t('addTitle')} onClose=${close}><ul class="sheet-list">

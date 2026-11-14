@@ -315,19 +315,29 @@ JSON
 
 ## Eatsights (branch `eatsight`)
 
-Unit: `node --test tests/eatsights.test.js` (mapping, id round-trip, ETag cache, static
-fallback, JCS, key_id, signature verification, offline outbox).
+Unit (run in CI before every deploy): `npm test`
+- `tests/eatsights.test.js`: mapping, id round-trip, ETag cache, static fallback, JCS,
+  key_id, signature verification, offline outbox.
+- `tests/prompts.test.js`: when the contribution sheet shows (`js/prompts.js`): only the
+  orderer, sharing on, Eatsights menu, not samples; confirmed fresh prices never asked;
+  changed and new prices always; at most 3 checks, contested first; 14-day cool-down per
+  item and stall; 3 skips pause asking for 14 days and keep the orderer's own changes for the
+  next sheet; rating at most weekly per stall; stored history cleaned.
 
-Browser (preview or `python3 tools/serve.py 8090`, Eatsights develop reachable):
-1. Menu → Add → Pick from library: Ernakulam lists stalls with freshness chips; source line
-   "Menus from Eatsights · CC0".
-2. Open a stall: price marks (unconfirmed/contested/stale/from the stall); Use this menu.
-3. Pick Kozhikode: "No stalls in Kozhikode yet" with New menu / Add a stall.
-4. Offline after one load: "Offline · saved menus". Block Eatsights with nothing cached:
-   "Can’t reach Eatsights" and old-library chips.
-5. Settings: Data source switch; Contributions On/Off, what is shared, reset key.
-6. Sharing on, Eatsights menu in use: tap an item (orderer) → Sold out today; lock the order
-   → "Still Rs N?" card; change a price, Finish → share sheet (Not now is the main button),
-   then wait time and rating. Sending shows Sent / Already sent / Not accepted; offline shows
-   "Will send when online" and sends after reconnecting.
-7. Add a stall: name, kind, city → location (city centre) → duplicate check → Stall added.
+Browser (fake Eatsights through Playwright routes; no network):
+`python3 tools/serve.py 8090` then
+`PLAYWRIGHT_MODULE=… TEST_URL=http://127.0.0.1:8090 node tests/eatsights.mjs`
+(optional `CHROME=/path/to/chrome`). Plays full rounds and checks which sheet appears and
+which signed requests Eatsights receives: no sheet for confirmed prices or with sharing off;
+three checks with a per-item rejection; items of a stall without a menu created on Eatsights
+(section, item, price) after a failed offline attempt; no repeat within 14 days; paused
+after three skips with nothing sent.
+
+`tests/library.mjs` covers the static library (Settings → Data source → Static library).
+
+Manual on the preview (https://eatsight.chaikadi.pages.dev, develop data):
+1. Library: chips, price marks, source line; Kozhikode empty state; offline banners.
+2. Settings: Data source; Contributions On (default)/Off, what is shared, reset key.
+3. Orderer, Eatsights menu, sharing on: Finish a round with an unconfirmed or changed price →
+   "Help the next group"; Not now is the main button; Send shows per-item results.
+4. Add a stall → add items → finish a round: the items appear on Eatsights.

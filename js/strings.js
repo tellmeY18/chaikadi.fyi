@@ -140,19 +140,19 @@ const en = {
   contribKeep: 'Keep my key', contribResetAction: 'Reset key', contribResetDone: 'Contributor key reset.',
   contribUnsupported: 'This browser cannot make a contributor key, so sharing is unavailable here.',
   contribPending: n => `${n} update${n === 1 ? '' : 's'} waiting to send.`,
-  esShareIntro: name => `${name}. Send to Eatsights as open data (CC0). No names or notes leave the group.`,
-  esShareN: n => `Share ${n} update${n === 1 ? '' : 's'}`, esShareOff: 'Turn on “Share prices with Eatsights” in Settings to send these.',
+ 
+ 
   esOpenSettings: 'Open Settings', esSending: 'Sending…',
   esSentTitle: 'Price updates sent', esQueuedTitle: 'Price updates saved',
   esSent: 'Sent · thanks', esAlready: 'Already sent', esRejected: r => `Not accepted · ${r}`, esQueued: 'Will send when online',
   esOffline: 'You’re offline', esOfflineHint: 'Saved on this phone. They will send when you are online.', esDontSend: 'Don’t send these',
-  esSoldOutMark: 'Sold out today', esSoldOutHint: 'Orderer only. Shared with Eatsights if sharing is on.', esSoldOutDone: name => `${name} marked sold out today.`,
+  esSoldOutMark: 'Sold out today', esSoldOutHint: 'Orderer only. Offered to Eatsights when you finish the round.', esSoldOutDone: name => `${name} marked sold out today.`,
   esSoldOutUndo: 'Not sold out', esItemActions: 'Add to my picks',
-  esQuickCheck: 'Quick check · optional', esStill: (name, price) => `${name} · still ${price}?`, esYes: 'Yes', esChanged: 'Changed', esSkip: 'Skip',
-  esCheckNote: 'Sent to Eatsights only if sharing is on.', esNewPrice: name => `New price for ${name}`, esThanks: 'Thanks.',
-  esWaitTitle: 'How long did the order take?', esWaitHint: 'Optional. Helps the next group plan. Sent only if sharing is on.',
+  esStill: (name, price) => `${name} · still ${price}?`, esYes: 'Yes', esChanged: 'Changed', esSkip: 'Skip',
+  esNewPrice: name => `New price for ${name}`,
+  esWaitTitle: 'How long did the order take?',
   esWaits: [['≤5 min', 300], ['10 min', 600], ['15 min', 900], ['20+', 1200]],
-  esRateTitle: 'How was it?', esRateHint: 'Optional. 1 to 5 per item, no words. Sent only if sharing is on.',
+  esRateTitle: 'How was it?',
   esRate: (name, n) => `${name}: ${n} out of 5`,
   addStall: 'Add a stall', stallName: 'Name', stallLocalName: 'Name in Malayalam', optional: 'Optional', stallKind: 'Kind',
   stallKinds: [['tea-stall', 'Tea stall'], ['juice-shop', 'Juice shop'], ['hotel', 'Hotel'], ['other', 'Other']],
@@ -166,7 +166,10 @@ const en = {
   useThisOne: 'Yes, use this one', noneAddNew: 'None of these · add new', stallAdded: 'Stall added',
   stallAddedHint: 'It stays unconfirmed until someone else visits. Add a few items so your group can pick.',
   addItemsNow: 'Add items', stallNeedsSharing: 'Adding a stall sends it to Eatsights. Turn on sharing in Settings first.',
-  esReportsToday: '1 report · today',
+  esRoundTitle: 'Help the next group', esRoundIntro: 'Optional. Sent to Eatsights as open data (CC0). No names or notes leave the group.',
+  esPrices: 'Prices', esSendN: n => `Send ${n}`, esWaitShort: 'wait time', esNotOnMenu: 'not on the Eatsights menu',
+  esKindNew: 'New on Eatsights', esKindContested: 'People disagree on this price', esKindUnconfirmed: 'Only one report so far',
+  esKindStale: 'Not confirmed recently', esKindOld: 'Last confirmed over 2 weeks ago',
 };
 export function t(key, ...args) {
   const value = en[key];
