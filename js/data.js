@@ -188,8 +188,8 @@ export function orderableItems(place) {
   for (const { item, section, subsection } of entries) {
     if (item.available === false) continue;
     const base = counts.get(item.name.toLowerCase()) > 1 ? `${item.name} (${label(item, section, subsection)})` : item.name;
-    if (item.variants) for (const v of item.variants) out.push({ name: `${base} (${v.name})`, category: item.category, price: v.price });
-    else if (typeof item.price === 'number') out.push({ name: base, category: item.category, price: item.price });
+    if (item.variants) for (const v of item.variants) out.push({ name: `${base} (${v.name})`, category: item.category, price: v.price, id: item.id });
+    else if (typeof item.price === 'number') out.push({ name: base, category: item.category, price: item.price, id: item.id });
   }
   return out;
 }
@@ -363,12 +363,44 @@ export function createDataClient({ baseUrl = DATA_BASE_URL, fetchImpl = (...a) =
 }
 
 // ---- default client used by the app -----------------------------------------
+// Eatsights first; when it fails and nothing is cached, the city comes from the
+// static library instead (bundle.fallback = true, so the UI can say so).
+export function withFallback(primary, fallback) {
+  const served = new Map(); // cityId -> client that served it
+  const listeners = new Set();
+  const emit = event => { for (const fn of listeners) fn(event); };
+  primary.subscribe(emit);
+  fallback.subscribe(event => { if (event.type !== 'manifest') emit(event); });
+  async function loadCityBundle(cityId) {
+    try { const r = await primary.loadCityBundle(cityId); served.set(cityId, primary); return r; }
+    catch (error) {
+      if (!['network', 'offline', 'offline-empty', 'http', 'invalid'].includes(error.code)) throw error;
+      try {
+        const r = await fallback.loadCityBundle(cityId);
+        served.set(cityId, fallback);
+        return { ...r, bundle: { ...r.bundle, fallback: true }, fallback: true, reason: error.code };
+      } catch { throw error; }
+    }
+  }
+  const client = c => served.get(c) || primary;
+  return { source: primary.source, baseUrl: primary.baseUrl, loadManifest: () => primary.loadManifest(), refreshManifest: () => primary.refreshManifest(), loadCityBundle,
+    async searchPlaces(cityId, query) { if (!served.has(cityId)) await loadCityBundle(cityId); const r = await client(cityId).searchPlaces(cityId, query); return served.get(cityId) === fallback ? r.map(p => ({ ...p, fallback: true })) : r; },
+    async getPlace(id, cityId) { return (await primary.getPlace(id, cityId)) || fallback.getPlace(id, cityId); },
+    subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); } };
+}
 let client = null;
+let clientKey = '';
 const appListeners = new Set();
-export function configureData({ baseUrl = DATA_BASE_URL } = {}) {
+let eatsightsFactory = null;
+// eatsights.js imports this module, so it registers itself instead of a cycle.
+export function registerEatsights(factory) { eatsightsFactory = factory; }
+export function configureData({ baseUrl = DATA_BASE_URL, source = 'static' } = {}) {
   const url = validateDataBaseUrl(baseUrl || DATA_BASE_URL);
-  if (!client || client.baseUrl !== url) {
-    client = createDataClient({ baseUrl: url });
+  const wanted = source === 'eatsights' && eatsightsFactory ? 'eatsights' : 'static';
+  if (!client || clientKey !== `${wanted}|${url}`) {
+    const staticClient = createDataClient({ baseUrl: url });
+    client = wanted === 'eatsights' ? withFallback(eatsightsFactory(), staticClient) : staticClient;
+    clientKey = `${wanted}|${url}`;
     client.subscribe(event => { for (const fn of appListeners) fn(event); });
   }
   return client;

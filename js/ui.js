@@ -1,9 +1,11 @@
 import { h, render, Component } from '../vendor/preact.module.js';
 import htm from '../vendor/htm.module.js';
-import { CATEGORIES, uid, funGroup, validCode, DATA_REPO_URL, SUGGEST_ENDPOINT, APP_VERSION } from './config.js';
+import { CATEGORIES, uid, funGroup, validCode, DATA_REPO_URL, SUGGEST_ENDPOINT, APP_VERSION, DATA_SOURCE, validDataSource } from './config.js';
 import { costs, debts, activeItems, activeMenu, libraryChanges, rankItems, searchItems } from './state.js';
 import { buildSuggestion, suggestionIssueUrl, sendSuggestion } from './data.js';
 import { LibrarySheet } from './library-ui.js';
+import { EsShareSheet, WaitSheet, RateSheet, OneTapCard, EsItemSheet, ContribSettings, ResetKeySheet, AddStallSheet, sharingOn, esSource, sendFacts } from './eatsights-ui.js';
+import { contrib } from './contrib.js';
 import { drawQR, scanQR } from './qr.js';
 import { t, money } from './strings.js';
 import { Icon, Sheet, Modal, CodeInput, Empty } from './components.js';
@@ -124,11 +126,15 @@ class App extends Component {
       this.setState({ view, ...(lockedNow ? { sheet: { kind: 'locked' } } : {}) });
       this.applyTheme(view.preferences.theme);
     });
+    // Contributions saved while offline go out once the device is online.
+    this.flush = () => { if (sharingOn(this.state.view)) contrib().flush().catch(() => {}); };
+    window.addEventListener('online', this.flush);
+    setTimeout(this.flush, 3000);
     this.media = window.matchMedia('(prefers-color-scheme: dark)');
     this.themeChanged = () => this.applyTheme(this.state.view.preferences.theme);
     this.media.addEventListener('change', this.themeChanged);
   }
-  componentWillUnmount() { this.unsubscribe?.(); this.media?.removeEventListener('change', this.themeChanged); }
+  componentWillUnmount() { this.unsubscribe?.(); this.media?.removeEventListener('change', this.themeChanged); window.removeEventListener('online', this.flush); }
   componentDidUpdate(_previousProps, previousState) {
     if (this.state.view.state && this.state.view.tab === 'menu' &&
         (previousState.view.tab !== 'menu' || !previousState.view.state)) {
@@ -234,6 +240,9 @@ class App extends Component {
     const all = s.menu.filter(i => i.menuId === viewing?.id);
     const items = searchItems(rankItems(s, all), this.state.query);
     const show = id => this.setState({ viewMenu: id, editing: false, query: '' });
+    const linked = isActive && esSource(viewing) && s.group.ordererId === v.identity.id;
+    const soldOut = this.soldOutToday(v);
+    const itemLabel = item => linked && !this.state.editing ? html`<button class="item-name" onClick=${() => this.open({ kind: 'esItem', item })}>${item.name}</button>` : item.name;
     return html`<section>
       <div class="section-heading with-tools"><h1>${t('menu')}</h1><div class="tools">
         ${viewing && html`<button class="icon-button" aria-label=${t(this.state.editing ? 'done' : 'editMenu')} aria-pressed=${this.state.editing} onClick=${() => this.setState({ editing: !this.state.editing })}><${Icon} name=${this.state.editing ? 'check' : 'edit'}/></button>`}
@@ -248,7 +257,7 @@ class App extends Component {
       ${all.length > 0 && !items.length && html`<p>${t('noMatches')}</p>`}
       ${CATEGORIES.map(category => {
         const list = items.filter(i => i.category === category);
-        return list.length > 0 && html`<section class="menu-section"><h3>${t('categories')[category]}</h3><ul class="item-list">${list.map(item => html`<li key=${item.id}><div class="menu-row">${leader(item.name, item.price === 0 ? t('priceUnset') : money(item.price, s.group.currency))}
+        return list.length > 0 && html`<section class="menu-section"><h3>${t('categories')[category]}</h3><ul class="item-list">${list.map(item => html`<li key=${item.id} class=${soldOut.includes(item.id) ? 'sold-out' : ''}><div class="menu-row">${leader(itemLabel(item), soldOut.includes(item.id) ? html`<span class="fresh-chip"><${Icon} name="soldout" size=${16}/>${t('esSoldOut')}</span>` : item.price === 0 ? t('priceUnset') : money(item.price, s.group.currency))}
           ${this.state.editing && html`<div class="actions"><button disabled=${locked} onClick=${() => this.open({ kind: 'item', menuId: viewing.id, item })}><${Icon} name="edit"/>${t('edit')}</button><button class="danger" disabled=${locked} onClick=${() => this.confirm(t('deleteItem', item.name), t('delete'), () => this.action('menu.delete', { id: item.id }, t('itemDeleted')))}><${Icon} name="trash"/>${t('delete')}</button></div>`}</div></li>`)}</ul></section>`;
       })}
     </section>`;
@@ -289,6 +298,7 @@ class App extends Component {
       <div class="actions two order-actions"><button class="outbound" disabled=${!s.picks.length} onClick=${() => this.copy(orderText(s), t('orderCopied'))}><${Icon} name="copy"/>${t('copyOrder')}</button>
         ${orderer && (s.group.status === 'open' ? html`<button class="primary" disabled=${!s.picks.length} onClick=${() => this.action('order.lock', {})}><${Icon} name="lock"/>${t('lock')}</button>` : html`<button class="primary" onClick=${() => this.go('costs')}>${t('enterBill')}</button>`)}</div>
       ${orderer && s.group.status === 'locked' && html`<button class="quiet" onClick=${() => this.confirm(t('unlockConfirm'), t('unlock'), () => this.action('order.unlock', {}))}><${Icon} name="unlock"/>${t('unlock')}</button>`}
+      ${s.group.status === 'locked' && sharingOn(v) && esSource(activeMenu(s)) && lines.length > 0 && html`<${OneTapCard} key=${s.round.id} source=${esSource(activeMenu(s))} items=${lines.map(([item]) => item)} currency=${s.group.currency} store=${this.props.store}/>`}
     </section>`;
   }
   costs(v) {
@@ -346,6 +356,12 @@ class App extends Component {
       ${v.role === 'host' && s && html`<form class="stack" onSubmit=${e => { e.preventDefault(); this.action('group.currency', { currency: fields(e).currency }); }}><label>${t('groupCurrency')}<span class="with-dice"><input name="currency" required maxlength="8" defaultValue=${s.group.currency} list="currencies"/><button disabled=${s.group.status !== 'open'}>${t('saveCurrency')}</button></span><small>${t('currencyHint')}</small></label><datalist id="currencies"><option value="Rs"/><option value="₹"/><option value="$"/><option value="€"/></datalist></form>`}
       <fieldset><legend>${t('theme')}</legend><div class="segmented">${['light', 'dark'].map(value => html`<button type="button" aria-pressed=${theme === value} onClick=${() => this.run(() => store.preferences({ theme: value }))}>${theme === value && html`<${Icon} name="check" size=${20}/>`}${t(value)}</button>`)}</div></fieldset>
       ${s && html`<button class="outbound" onClick=${() => this.download(store.backup())}><${Icon} name="share"/>${t('export')}</button>`}
+      <section class="stack"><h2>${t('dataSection')}</h2>
+        <fieldset><legend>${t('dataSource')}</legend><div class="segmented">${[['eatsights', 'dataEatsights'], ['static', 'dataStatic']].map(([value, key]) => {
+          const current = validDataSource(v.preferences.dataSource || DATA_SOURCE);
+          return html`<button type="button" aria-pressed=${current === value} onClick=${() => this.run(async () => { await store.preferences({ dataSource: value }); store.toast(t('dataSourceSaved')); })}>${current === value && html`<${Icon} name="check" size=${20}/>`}${t(key)}</button>`;
+        })}</div><small>${t('dataSourceHint')}</small></fieldset></section>
+      <${ContribSettings} key=${String(v.preferences.shareEatsights)} view=${v} store=${store} onReset=${done => this.open({ kind: 'resetKey', done })}/>
       ${v.role === 'host' && s && html`<button onClick=${() => this.confirm(t('regenerateConfirm'), t('regenerate'), () => store.regenerateCode())}>${t('regenerate')}</button>`}
       ${s && html`<button class="danger" onClick=${() => this.confirm(t('leaveConfirm'), t('leave'), () => store.leave())}><${Icon} name="alert"/>${t('leave')}</button>`}
       ${v.updateReady ? html`<button class="primary" disabled=${v.updating} onClick=${() => store.applyUpdate?.()}>${t(v.updating ? 'updating' : 'updateNow')}</button>`
@@ -357,8 +373,18 @@ class App extends Component {
   async finishRound(s) {
     // Offer (never send) library price updates after the round is archived.
     const source = activeMenu(s)?.source, changes = libraryChanges(s);
+    const ordered = activeItems(s).filter(item => s.picks.some(p => p.itemId === item.id)).map(item => ({ name: item.name, price: item.price }));
     const ok = await this.action('round.finish', { nextRoundId: uid(), date: new Date().toISOString() }, t('roundSaved'));
-    if (ok && source && !source.sample && changes.length) this.open({ kind: 'share', source, changes });
+    if (!ok || !source || source.sample) return;
+    const es = esSource(activeMenu(s));
+    // Eatsights: share sheet (if prices changed), then the optional wait and
+    // quality prompts, only when sharing is on. Never automatic.
+    if (es) {
+      const after = sharingOn(this.state.view) && ordered.length ? { kind: 'wait', source: es, items: ordered } : null;
+      if (changes.length) this.open({ kind: 'esShare', source: es, changes, after }); else if (after) this.open(after);
+      return;
+    }
+    if (changes.length) this.open({ kind: 'share', source, changes });
   }
   // Suggest a library update: POST to SUGGEST_ENDPOINT when configured, else
   // open a prefilled GitHub issue form. Only place, items, prices and date.
@@ -374,6 +400,8 @@ class App extends Component {
       this.props.store.toast(t('shareOpened'));
     } catch (error) { this.props.store.notice(error.message); }
   }
+  // Sold-out marks are kept on this device for the rest of the day.
+  soldOutToday(v) { const m = v.preferences.soldOut; return m?.date === new Date().toDateString() && Array.isArray(m.ids) ? m.ids : []; }
   download(text) {
     const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
     const a = document.createElement('a'); a.href = url; a.download = 'chaikadi-backup.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 10000);
@@ -390,7 +418,33 @@ class App extends Component {
       try { const url = new URL(text), code = url.searchParams.get('room'); if (![location.hostname, 'chaikadi.fyi', 'chaikadi.pages.dev'].includes(url.hostname) || !validCode(code)) throw new Error(); close(); this.run(() => store.join(code, this.homeForm?.elements.name?.value || v.identity.name)); }
       catch { store.notice(t('badQR')); }
     }}/>${error}<//>`;
-    if (p.kind === 'library') return html`<${LibrarySheet} store=${store} view=${v} onClose=${close} suggest=${x => this.suggest(x)} onImported=${id => { this.setState({ viewMenu: id, editing: false }); close(); }}/>`;
+    if (p.kind === 'library') return html`<${LibrarySheet} key=${p.initialPlace || 'library'} store=${store} view=${v} initialPlace=${p.initialPlace} initialCity=${p.city} onClose=${close} suggest=${x => this.suggest(x)} onImported=${id => { this.setState({ viewMenu: id, editing: false }); close(); }}
+      onNewMenu=${() => this.open({ kind: 'menuName' })} onAddStall=${city => this.open({ kind: 'addStall', city })}/>`;
+    const toSettings = () => { close(); this.go('settings'); };
+    if (p.kind === 'esShare') return html`<${EsShareSheet} source=${p.source} changes=${p.changes} view=${v} store=${store} currency=${s?.group.currency || 'Rs'} onSettings=${toSettings} onClose=${() => (p.after ? this.open(p.after) : close())}/>`;
+    if (p.kind === 'wait') return html`<${WaitSheet} source=${p.source} items=${p.items} store=${store} onNext=${() => this.open({ kind: 'rate', source: p.source, items: p.items })}/>`;
+    if (p.kind === 'rate') return html`<${RateSheet} source=${p.source} items=${p.items} store=${store} onClose=${close}/>`;
+    if (p.kind === 'resetKey') return html`<${ResetKeySheet} store=${store} onClose=${close} onDone=${p.done}/>`;
+    if (p.kind === 'addStall') return html`<${AddStallSheet} view=${v} city=${p.city} onClose=${close} onSettings=${toSettings}
+      onUse=${(place, city) => this.open({ kind: 'library', initialPlace: place.id, city })}
+      onAddItems=${added => this.run(async () => {
+        const today = new Date().toISOString().slice(0, 10);
+        const id = s ? await store.newMenu(added.name, { placeId: added.id, city: added.city, name: added.name, lastConfirmed: today, sample: false, items: [] }) : null;
+        if (!id) { close(); return; }
+        this.setState({ viewMenu: id, editing: false }); this.go('menu'); this.open({ kind: 'item', menuId: id });
+      })}/>`;
+    if (p.kind === 'esItem') {
+      const item = p.item, sold = this.soldOutToday(v).includes(item.id);
+      return html`<${EsItemSheet} item=${item} soldOut=${sold} onClose=${close} onPick=${() => submit(() => store.changePick(item.id, 1))}
+        onSoldOut=${() => this.run(async () => {
+          const ids = sold ? this.soldOutToday(v).filter(x => x !== item.id) : [...this.soldOutToday(v), item.id];
+          await store.preferences({ soldOut: { date: new Date().toDateString(), ids } });
+          close();
+          if (sold) return;
+          store.toast(t('esSoldOutDone', item.name));
+          if (sharingOn(v)) await sendFacts(esSource(activeMenu(s)), [{ name: item.name, property: 'availability.observed', value: { state: 'sold_out' } }]);
+        })}/>`;
+    }
     if (p.kind === 'add') return html`<${Sheet} title=${t('addTitle')} onClose=${close}><ul class="sheet-list">
       <li><button disabled=${p.locked} onClick=${() => this.open({ kind: 'item', menuId: p.menuId })}><${Icon} name="plus"/>${t('itemShort')}</button></li>
       <li><button disabled=${p.locked} onClick=${() => this.open({ kind: 'scan', menuId: p.menuId })}><${Icon} name="camera"/>${t('scanMenu')}</button></li>

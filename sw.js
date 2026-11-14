@@ -1,6 +1,6 @@
 // Bump this version whenever any app-shell file changes. Cache installation is
 // atomic: one missing dependency fails installation rather than half-caching.
-const CACHE = 'chaikadi-shell-v18';
+const CACHE = 'chaikadi-shell-v19';
 // The ~7 MB menu reader (OCR) is NOT part of the shell: it is cached on first
 // use in its own cache, which survives shell updates. Bump only when
 // vendor/ocr/ files change.
@@ -13,7 +13,7 @@ const DATA_CACHE = 'chaikadi-data-v1';
 const SHELL = [
   './', './styles.css', './manifest.json',
   './js/config.js', './js/state.js', './js/store.js', './js/p2p.js', './js/qr.js', './js/ui.js', './js/main.js', './js/ingest.js',
-  './js/strings.js', './js/components.js', './js/data.js', './js/library-ui.js',
+  './js/strings.js', './js/components.js', './js/data.js', './js/library-ui.js', './js/eatsights.js', './js/contrib.js', './js/eatsights-ui.js',
   './fonts/atkinson-hyperlegible-mono-latin.woff2', './fonts/courier-prime-400-latin.woff2', './fonts/courier-prime-700-latin.woff2', './fonts/noto-serif-malayalam.woff2',
   './vendor/preact.module.js', './vendor/htm.module.js', './vendor/peerjs.min.js', './vendor/qrcode.js', './vendor/jsQR.js',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png',

@@ -7,7 +7,7 @@ export const DEFAULT_CONFIG = {
 };
 export const ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
 // Shown in Settings. Bump with the service-worker cache version on release.
-export const APP_VERSION = '2026.11.13-7';
+export const APP_VERSION = '2026.11.14-eatsight-1';
 // Multi-menu writes require the same protocol on every peer. Storage remains
 // schema 1 with an additive migration; old app versions must not drop menu IDs.
 // v3: menus can record the library place they were imported from.
@@ -24,6 +24,23 @@ export const DATA_FETCH_TIMEOUT_MS = 8000;
 // "open a prefilled GitHub issue" instead. Never receives personal data.
 export const SUGGEST_ENDPOINT = '';
 export const DATA_REPO_URL = 'https://github.com/tellmeY18/chaikadi-data';
+
+// EATSIGHTS HOOK. Open food data API (https://github.com/tellmeY18/eatsights).
+// DATA_SOURCE picks the library: 'eatsights' (falls back to the static library
+// when Eatsights is unreachable and nothing is cached) or 'static'.
+// Overridable per device in Settings. Production: https://eatsights.letsimpl.fyi
+export const DATA_SOURCE = 'eatsights';
+export const EATSIGHTS_BASE_URL = 'https://develop.letsimpl.fyi';
+export const EATSIGHTS_URL = 'https://github.com/tellmeY18/eatsights';
+// Eatsights has no cities endpoint yet. id: Chaikadi city id; slug: Eatsights
+// `city`; centre: used as a coarse location for new stalls (precision 5 km).
+export const EATSIGHTS_CITIES = [
+  { id: 'in/kl/ernakulam', slug: 'ernakulam', name: 'Ernakulam', centre: { lat: 9.9816, lng: 76.2999 } },
+  { id: 'in/kl/thiruvananthapuram', slug: 'thiruvananthapuram', name: 'Thiruvananthapuram', centre: { lat: 8.5241, lng: 76.9366 } },
+  { id: 'in/kl/kozhikode', slug: 'kozhikode', name: 'Kozhikode', centre: { lat: 11.2588, lng: 75.7804 } },
+  { id: 'in/kl/thrissur', slug: 'thrissur', name: 'Thrissur', centre: { lat: 10.5276, lng: 76.2144 } },
+];
+export const validDataSource = value => (value === 'static' || value === 'eatsights' ? value : DATA_SOURCE);
 
 // https:// origins only; http:// is allowed for localhost while developing.
 export function validateDataBaseUrl(value) {

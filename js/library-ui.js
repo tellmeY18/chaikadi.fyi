@@ -3,7 +3,8 @@
 import { h, Component } from '../vendor/preact.module.js';
 import htm from '../vendor/htm.module.js';
 import { configureData, loadManifest, loadCityBundle, searchPlaces, subscribeData, freshnessOf } from './data.js';
-import { DATA_BASE_URL } from './config.js';
+import './eatsights.js';
+import { DATA_BASE_URL, DATA_SOURCE, EATSIGHTS_URL, validDataSource } from './config.js';
 import { t, money } from './strings.js';
 import { Icon, Sheet, Empty } from './components.js';
 
@@ -19,6 +20,42 @@ export function FreshChip({ lastConfirmed, freshness, full = false }) {
   if (status === 'fresh' && !full) return null;
   return html`<span class=${`fresh-chip fresh-${status}`}><${Icon} name=${icon} size=${16}/>${text}</span>`;
 }
+const daysSince = date => { if (!date) return null; const now = new Date(); return Math.max(0, Math.floor((Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - Date.parse(`${date}T00:00:00Z`)) / 86400000)); };
+const agoText = date => { const d = daysSince(date); return d === null ? '' : t('ago', d); };
+// Eatsights fact status: solid border = people agree, dashed = not settled yet.
+const ES_LOOK = { confirmed: ['check', false], unconfirmed: ['question', true], contested: ['neq', false], stale: ['clock', true] };
+export function esChipText(summary) {
+  const ago = agoText(summary.last);
+  return summary.status === 'confirmed' ? t('esConfirmed', summary.contributors, ago)
+    : summary.status === 'contested' ? t('esContested') : summary.status === 'stale' ? t('esStale') : t('esReports', summary.contributors, ago);
+}
+export function EsChip({ summary, empty }) {
+  if (empty) return html`<span class="fresh-chip dashed"><${Icon} name="question" size=${16}/>${t('esNoPrices')}</span>`;
+  const [icon, dashed] = ES_LOOK[summary.status] || ES_LOOK.unconfirmed;
+  return html`<span class=${`fresh-chip es-${summary.status} ${dashed ? 'dashed' : ''}`}><${Icon} name=${icon} size=${16}/>${esChipText(summary)}</span>`;
+}
+const OldChip = ({ date }) => html`<span class="fresh-chip dashed"><${Icon} name="book" size=${16}/>${t('esOld', agoText(date))}</span>`;
+export function PlaceChip({ place, freshness, full }) {
+  if (place.es) return html`<${EsChip} summary=${place.es.summary} empty=${!place.itemCount}/>`;
+  if (place.fallback) return html`<${OldChip} date=${place.last_confirmed}/>`;
+  return html`<${FreshChip} full=${full} lastConfirmed=${place.last_confirmed} freshness=${freshness}/>`;
+}
+// Price-level mark: confirmed prices stay plain; anything else gets an icon
+// before the price and one muted line under the item.
+function priceMark(fact) {
+  if (!fact) return null;
+  if (fact.soldOut) return ['soldout', t('esSoldOut')];
+  if (fact.vendorDiffers) return ['store', t('esStallDiffers')];
+  if (fact.vendor) return ['store', t('esFromStall')];
+  if (fact.status === 'contested') return ['neq', t('esPriceContested')];
+  if (fact.status === 'stale') return ['clock', t('esStale')];
+  if (fact.status === 'unconfirmed') return ['question', t('esReports', fact.contributors, agoText(fact.last))];
+  return null;
+}
+export function SourceLine({ fallback }) {
+  if (fallback) return html`<p class="source-line"><${Icon} name="book" size=${16}/><span>${t('esOldSource')}</span></p>`;
+  return html`<p class="source-line"><${Icon} name="globe" size=${16}/><span>${t('esSourcePrefix')} <a href=${EATSIGHTS_URL} target="_blank" rel="noopener noreferrer">${t('esSource')}<${Icon} name="external" size=${14}/></a></span></p>`;
+}
 const SampleTag = () => html`<span class="sample-tag">${t('sample')}</span>`;
 
 const DAY_NAMES = { mo: 'Mon', tu: 'Tue', we: 'Wed', th: 'Thu', fr: 'Fri', sa: 'Sat', su: 'Sun' };
@@ -31,17 +68,21 @@ export function whereText(place) {
   return [place.kind ? t(`kind_${place.kind}`) : '', inside, l.floor, [l.area, l.postcode].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
 }
 // One menu-board row per price; details in words underneath (never colour).
-function Items({ items, currency }) {
+function Items({ items, currency, es }) {
   return html`<ul class="item-list">${items.map(item => {
+    const fact = es?.items?.[item.id], mark = priceMark(fact);
+    const markIcon = mark && mark[0] !== 'store' ? mark[0] : null;
     const details = [item.diet && t(`diet_${item.diet}`), item.portion, item.addOn && t('addOnLabel'), item.spice ? t(`spice_${item.spice}`) : '',
       item.available === false && t('notAvailable'), item.localName].filter(Boolean).join(' · ');
-    const price = typeof item.price === 'number' ? money(Math.round(item.price * 100), currency) : item.priceStatus ? t(`price_${item.priceStatus}`) : '';
+    const amount = typeof item.price === 'number' ? money(Math.round(item.price * 100), currency) : item.priceStatus ? t(`price_${item.priceStatus}`) : '';
+    const price = markIcon ? html`<span class="marked-price"><${Icon} name=${markIcon} size=${16}/>${amount}</span>` : amount;
     return html`<li key=${item.id} class=${item.available === false ? 'unavailable' : ''}>
       ${item.variants ? item.variants.map(v => leader(`${item.name} (${v.name}${v.portion ? `, ${v.portion}` : ''})`, money(Math.round(v.price * 100), currency))) : leader(item.name, price)}
       ${item.priceStatus && item.price !== undefined && html`<small>${t(`price_${item.priceStatus}`)}</small>`}
       ${details && html`<small>${details}</small>`}
       ${item.description && html`<small>${item.description}</small>`}
-      ${(item.uncertain || item.note) && html`<small class="item-flag">${item.uncertain ? `${t('uncertainLabel')} ` : ''}${item.note || ''}</small>`}
+      ${mark && html`<small class="price-mark"><${Icon} name=${mark[0]} size=${16}/><span>${mark[1]}</span></small>`}
+      ${!es && (item.uncertain || item.note) && html`<small class="item-flag">${item.uncertain ? `${t('uncertainLabel')} ` : ''}${item.note || ''}</small>`}
     </li>`;
   })}</ul>`;
 }
@@ -53,7 +94,7 @@ export class LibrarySheet extends Component {
     this.state = { phase: 'loading', manifest: null, city: '', query: '', results: [], place: null, error: '', cached: false, choosing: false, busy: false };
   }
   componentDidMount() {
-    configureData({ baseUrl: this.props.view.config.dataBaseUrl || DATA_BASE_URL });
+    configureData({ baseUrl: this.props.view.config.dataBaseUrl || DATA_BASE_URL, source: validDataSource(this.props.view.preferences.dataSource || DATA_SOURCE) });
     this.unsubscribe = subscribeData(event => {
       if (this.closed) return;
       if (event.type === 'manifest') this.open(true);
@@ -67,7 +108,7 @@ export class LibrarySheet extends Component {
     try {
       const { manifest, cached } = await loadManifest();
       if (this.closed) return;
-      const remembered = this.props.view.preferences.libraryCity;
+      const remembered = this.props.initialCity || this.props.view.preferences.libraryCity;
       const city = manifest.cities.some(c => c.id === this.state.city) ? this.state.city
         : manifest.cities.some(c => c.id === remembered) ? remembered : manifest.cities[0]?.id || '';
       this.setState({ manifest, city, cached });
@@ -80,11 +121,13 @@ export class LibrarySheet extends Component {
   async loadCity(city, quiet = false) {
     if (!quiet) this.setState({ phase: this.state.phase === 'ready' ? 'ready' : 'loading' });
     try {
-      const { cached } = await loadCityBundle(city);
+      const { cached, fallback = false, fetchedAt } = await loadCityBundle(city);
       const results = await searchPlaces(city, this.state.query);
       if (this.closed || city !== this.state.city) return;
-      const place = this.state.place && results.find(p => p.id === this.state.place.id);
-      this.setState({ phase: 'ready', results, cached, error: '', ...(this.state.place ? { place: place || this.state.place } : {}) });
+      const wanted = this.state.place?.id || (!this.shownInitial && this.props.initialPlace);
+      this.shownInitial = true;
+      const place = wanted && results.find(p => p.id === wanted);
+      this.setState({ phase: 'ready', results, cached, fallback, fetchedAt, error: '', ...(this.state.place || place ? { place: place || this.state.place } : {}) });
     } catch (error) {
       if (!this.closed && !quiet) this.setState({ phase: 'error', error: error.code === 'offline-empty' ? t('libraryOfflineEmpty') : error.message || t('libraryFailed') });
     }
@@ -120,26 +163,26 @@ export class LibrarySheet extends Component {
       <button class="back" onClick=${() => this.setState({ place: null, choosing: false })}><${Icon} name="back"/>${t('backToResults')}</button>
       <h3>${place.name}</h3>
       ${place.localName && html`<p class="local-name">${place.localName}</p>`}
-      <div class="chip-row"><${FreshChip} full lastConfirmed=${place.last_confirmed} freshness=${manifest.freshness}/>${place.sample && html`<${SampleTag}/>`}</div>
+      <div class="chip-row"><${PlaceChip} full place=${place} freshness=${manifest.freshness}/>${place.sample && html`<${SampleTag}/>`}</div>
       <dl class="place-facts">
         ${where && html`<dt>${t('placeWhere')}</dt><dd>${where}</dd>`}
         ${place.hours && html`<dt>${t('placeHours')}</dt><dd>${hoursText(place.hours)}</dd>`}
         ${place.tax && html`<dt>${t('placeTax')}</dt><dd>${t(place.tax.included ? 'taxIncluded' : 'taxExtra')}${place.tax.note ? ` ${place.tax.note}` : ''}</dd>`}
-        <dt>${t('placePrices')}</dt><dd>${t('lastConfirmed', place.last_confirmed)}${place.source ? ` ${t('sourceText', t(`source_${place.source}`))}` : ''}</dd>
+        ${place.es ? place.es.imported && html`<dt>${t('placePrices')}</dt><dd>${t('esImported')}</dd>` : html`<dt>${t('placePrices')}</dt><dd>${t('lastConfirmed', place.last_confirmed)}${place.source ? ` ${t('sourceText', t(`source_${place.source}`))}` : ''}</dd>`}
         ${place.note && html`<dt>${t('placeNote')}</dt><dd>${place.note}</dd>`}
       </dl>
-      <p class="caption">${city}/${place.id}</p>
+      ${!place.es && html`<p class="caption">${city}/${place.id}</p>`}
       ${place.sample && html`<p class="muted">${t('sampleNote')}</p>`}
       ${place.currency !== 'INR' && html`<p class="banner warning"><${Icon} name="alert"/>${t('foreignCurrency', place.currency)}</p>`}
       ${place.sections.map(section => html`<section class="menu-section" key=${section.id}>
         <h3>${section.name}</h3>
         ${section.hours && html`<p class="caption">${hoursText(section.hours)}</p>`}
         ${section.note && html`<p class="caption">${section.note}</p>`}
-        ${section.items && html`<${Items} items=${section.items} currency=${currency}/>`}
+        ${section.items && html`<${Items} items=${section.items} currency=${currency} es=${place.es}/>`}
         ${(section.sections || []).map(sub => html`<div class="menu-subsection" key=${sub.id}><h4>${sub.name}</h4>
           ${sub.hours && html`<p class="caption">${hoursText(sub.hours)}</p>`}
           ${sub.note && html`<p class="caption">${sub.note}</p>`}
-          <${Items} items=${sub.items} currency=${currency}/></div>`)}
+          <${Items} items=${sub.items} currency=${currency} es=${place.es}/></div>`)}
       </section>`)}
       <div class="sheet-actions">
         ${choosing ? html`<p>${t('linkedChoice', linked?.name || place.name)}</p><p class="muted">${t('replaceHint')}</p>
@@ -147,27 +190,35 @@ export class LibrarySheet extends Component {
             <button class="danger" disabled=${busy} onClick=${() => this.use('replace')}><${Icon} name="alert"/>${t('replaceItems')}</button>
             <button class="quiet" onClick=${() => this.setState({ choosing: false })}>${t('cancel')}</button>`
           : html`<p class="muted">${t('importNote')}</p><button class="primary" disabled=${busy} onClick=${() => this.use()}>${busy ? '…' : t('useThisMenu')}</button>
-            <button class="outbound" onClick=${() => this.props.suggest({ placeId: place.id, city, name: place.name, changes: [] })}><${Icon} name="external"/>${t('suggestUpdate')}</button>`}
+            ${!place.es && html`<button class="outbound" onClick=${() => this.props.suggest({ placeId: place.id, city, name: place.name, changes: [] })}><${Icon} name="external"/>${t('suggestUpdate')}</button>`}`}
+        <${SourceLine} fallback=${!place.es}/>
       </div>
     </div>`;
   }
   render({ onClose }) {
-    const { phase, manifest, city, query, results, place, error, cached } = this.state;
+    const { phase, manifest, city, query, results, place, error, cached, fallback, fetchedAt } = this.state;
+    const cityName = manifest?.cities.find(c => c.id === city)?.name || city;
+    const eatsights = manifest?.source === 'eatsights';
     return html`<${Sheet} title=${t('libraryTitle')} onClose=${onClose} className="library">
       ${phase === 'loading' && html`<p role="status">${t('libraryLoading')}</p>`}
       ${phase === 'error' && html`<${Empty} text=${error} icon="offline"><button onClick=${() => { this.setState({ phase: 'loading' }); this.open(); }}>${t('retry')}</button><//>`}
       ${phase === 'empty' && html`<${Empty} text=${t('libraryNoCities')} icon="book"/>`}
       ${phase === 'ready' && place && this.preview()}
       ${phase === 'ready' && !place && html`<div class="stack">
-        ${cached && !navigator.onLine && html`<p class="banner info" role="status"><${Icon} name="offline"/>${t('libraryCached')}</p>`}
-        <label>${t('libraryCity')}<select value=${city} onChange=${e => this.chooseCity(e.currentTarget.value)}>${manifest.cities.map(c => html`<option value=${c.id}>${c.name} (${c.placeCount})</option>`)}</select></label>
-        <label>${t('librarySearch')}<input type="search" value=${query} maxlength="60" autocomplete="off" onInput=${e => this.search(e.currentTarget.value)}/></label>
-        ${!results.length ? html`<p class="muted" role="status">${t('libraryNoResults')}</p>` : html`<ul class="library-results">${results.slice(0, 100).map(p => html`<li key=${p.id}>
+        ${fallback ? html`<div class="banner dashed" role="status"><${Icon} name="offline"/><span><strong>${t('esFallback')}</strong> ${t('esFallbackHint')}</span></div>`
+          : cached && !navigator.onLine && html`<div class="banner dashed" role="status"><${Icon} name="offline"/><span><strong>${eatsights ? t('esOfflineCached') : t('libraryCached')}</strong> ${eatsights && fetchedAt ? t('esOfflineCachedHint', new Date(fetchedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })) : ''}</span></div>`}
+        <label>${t('libraryCity')}<select value=${city} onChange=${e => this.chooseCity(e.currentTarget.value)}>${manifest.cities.map(c => html`<option value=${c.id}>${c.name}${c.id === city && results && !query ? ` (${results.length})` : Number.isInteger(c.placeCount) ? ` (${c.placeCount})` : ''}</option>`)}</select></label>
+        ${(results.length > 0 || query) && html`<label>${t('librarySearch')}<input type="search" value=${query} maxlength="60" autocomplete="off" onInput=${e => this.search(e.currentTarget.value)}/></label>`}
+        ${!results.length && !query ? html`<div class="empty center"><${Icon} name="store" size=${48}/><p><strong>${t('esEmptyCity', cityName)}</strong></p><p>${t('esEmptyHint')}</p>
+            <div class="stack"><button class="primary" onClick=${() => this.props.onNewMenu?.()}>${t('newMenu')}</button>${eatsights && html`<button onClick=${() => this.props.onAddStall?.(city)}>${t('addStall')}</button>`}</div></div>`
+        : !results.length ? html`<p class="muted" role="status">${t('libraryNoResults')}</p>` : html`<ul class="library-results">${results.slice(0, 100).map(p => html`<li key=${p.id}>
           <button class="library-result" onClick=${() => this.setState({ place: p })}>
             <span class="library-name">${p.name}</span>
             ${whereText(p) && html`<span class="caption">${whereText(p)}</span>`}
-            <span class="chip-row"><span class="caption">${t('libraryItems', p.itemCount)}</span><${FreshChip} lastConfirmed=${p.last_confirmed} freshness=${manifest.freshness}/>${p.sample && html`<${SampleTag}/>`}</span>
+            <span class="chip-row"><span class="caption">${t('libraryItems', p.itemCount)}</span><${PlaceChip} place=${p} freshness=${manifest.freshness}/>${p.sample && html`<${SampleTag}/>`}</span>
           </button></li>`)}</ul>`}
+        ${fallback && html`<button onClick=${() => this.loadCity(city)}><${Icon} name="refresh"/>${t('esTryAgain')}</button>`}
+        <${SourceLine} fallback=${fallback || !eatsights}/>
       </div>`}
     <//>`;
   }

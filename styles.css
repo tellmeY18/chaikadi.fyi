@@ -246,6 +246,47 @@ details[open] summary { margin-bottom: 12px; }
 .menu-section > h3 + .caption, .menu-subsection > h4 + .caption { margin: 0 0 4px; }
 .item-list li.unavailable .leader { text-decoration: line-through; }
 
+/* Eatsights: ink only. Solid border = people agree; dashed = not settled yet. */
+.fresh-chip.dashed { border-style: dashed; }
+.fresh-chip.es-confirmed { font-weight: 700; }
+.fresh-chip .icon { flex-shrink: 0; }
+.marked-price { display: inline-flex; align-items: center; gap: 4px; }
+.price-mark { display: flex; align-items: flex-start; gap: 6px; }
+.price-mark .icon { margin-top: 2px; color: var(--ink); }
+.source-line { display: flex; align-items: center; gap: 6px; margin: 12px 0 0; font-size: .875rem; }
+.source-line a { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; font-weight: 700; }
+.banner.dashed { border-style: dashed; align-items: flex-start; }
+.empty.center { text-align: center; }
+.empty.center > .icon { margin: 0 auto 16px; }
+.change-list { list-style: none; padding: 0; margin: 0 0 8px; }
+.change-list > li { border-bottom: 1px solid var(--line); padding: 12px 0; }
+.check-row { flex-direction: row; align-items: center; gap: 14px; font-size: 1rem; font-weight: 400; min-height: 48px; }
+.change-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.change-diff { display: inline-flex; align-items: center; gap: 6px; }
+.change-diff s { color: var(--muted); }
+.choice-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; margin: 8px 0; }
+.choice-row.two { grid-template-columns: 1fr 1fr; }
+.choice-row.five { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.choice-row > button { min-height: 48px; padding: 8px; gap: 6px; }
+.choice-row > button[aria-pressed="true"] { background: var(--ink); color: var(--page); }
+.rate-row { padding: 8px 0 12px; border-bottom: 1px solid var(--line); }
+.rate-row legend { font-size: 1rem; }
+.card { border: var(--rule); padding: 14px; margin-top: 20px; }
+.card p { margin-bottom: 8px; }
+.radio-list { display: flex; flex-direction: column; }
+.radio-row { flex-direction: row; align-items: flex-start; gap: 12px; padding: 10px 0; font-size: 1rem; font-weight: 400; }
+.radio-row input { width: 22px; height: 22px; min-height: 0; accent-color: var(--ink); flex-shrink: 0; }
+.radio-row .icon { margin-top: 2px; }
+.radio-row span { display: flex; flex-direction: column; }
+.radio-row.disabled { color: var(--muted); }
+.plain-list.dotted li::before { content: "· "; }
+.plain-list.dotted li { font-size: .875rem; }
+.row-copy { display: flex; flex-direction: column; align-items: flex-start; text-align: left; }
+.row-copy small { font-weight: 400; margin-top: 2px; }
+.sheet-list button:has(.row-copy) { padding: 12px 0; }
+.dup-row { padding: 12px 0; gap: 8px; }
+.item-list li.sold-out .leader > span:first-child { text-decoration: line-through; }
+
 /* Bottom navigation */
 .bottom-nav { position: fixed; z-index: 5; bottom: 0; left: 50%; transform: translateX(-50%); display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); width: min(100%,560px); padding: 0 0 env(safe-area-inset-bottom); border-top: var(--rule); background: var(--page); }
 .bottom-nav > button { display: flex; flex-direction: column; min-height: 72px; gap: 4px; padding: 8px 0; border: 0; border-top: 4px solid transparent; font-size: .875rem; font-weight: 400; line-height: 1.3; }

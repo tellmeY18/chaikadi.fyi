@@ -312,3 +312,22 @@ JSON
   installation, background suspension and local mDNS/network checks.
 - Note public signaling failures separately from application failures. Re-run
   with manual pairing or a known-good PeerServer to isolate network causes.
+
+## Eatsights (branch `eatsight`)
+
+Unit: `node --test tests/eatsights.test.js` (mapping, id round-trip, ETag cache, static
+fallback, JCS, key_id, signature verification, offline outbox).
+
+Browser (preview or `python3 tools/serve.py 8090`, Eatsights develop reachable):
+1. Menu → Add → Pick from library: Ernakulam lists stalls with freshness chips; source line
+   "Menus from Eatsights · CC0".
+2. Open a stall: price marks (unconfirmed/contested/stale/from the stall); Use this menu.
+3. Pick Kozhikode: "No stalls in Kozhikode yet" with New menu / Add a stall.
+4. Offline after one load: "Offline · saved menus". Block Eatsights with nothing cached:
+   "Can’t reach Eatsights" and old-library chips.
+5. Settings: Data source switch; Contributions On/Off, what is shared, reset key.
+6. Sharing on, Eatsights menu in use: tap an item (orderer) → Sold out today; lock the order
+   → "Still Rs N?" card; change a price, Finish → share sheet (Not now is the main button),
+   then wait time and rating. Sending shows Sent / Already sent / Not accepted; offline shows
+   "Will send when online" and sends after reconnecting.
+7. Add a stall: name, kind, city → location (city centre) → duplicate check → Stall added.

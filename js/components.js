@@ -27,6 +27,16 @@ const paths = {
   external: 'M14 3h7v7 M21 3L11 13 M18 14v7H3V6h7',
   clock: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0 M12 7v5l3 2',
   refresh: 'M20 4v6h-6 M4 20v-6h6 M19 10A8 8 0 0 0 5 7 M5 14a8 8 0 0 0 14 3',
+  question: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0 M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.5 M12 16.5v1',
+  neq: 'M5 9h14 M5 15h14 M16 4L8 20',
+  store: 'M3 9l2-5h14l2 5z M5 9v11h14V9 M10 20v-6h4v6',
+  soldout: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0 M5.6 5.6l12.8 12.8',
+  globe: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0 M3 12h18 M12 3c3 3 3 15 0 18 M12 3c-3 3-3 15 0 18',
+  key: 'M2.5 12a4.5 4.5 0 1 0 9 0a4.5 4.5 0 1 0-9 0 M11.5 12H21v3 M17.5 12v3',
+  map: 'M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z M9 3v15 M15 6v15',
+  target: 'M5 12a7 7 0 1 0 14 0a7 7 0 1 0-14 0 M12 2v4 M12 18v4 M2 12h4 M18 12h4',
+  dup: 'M8 8h12v12H8z M4 16V4h12',
+  arrow: 'M5 12h14 M13 6l6 6-6 6',
 };
 export function Icon({ name, size = 24 }) {
   return html`<svg class="icon" viewBox="0 0 24 24" width=${size} height=${size} fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true"><path d=${paths[name] || paths.menu}/></svg>`;

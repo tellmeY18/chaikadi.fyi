@@ -2,11 +2,13 @@ name: Deploy
 
 # Tests every push and pull request. Pushes to main deploy the app to
 # Cloudflare Pages (project "chaikadi", custom domain chaikadi.fyi).
+# Pushes to eatsight deploy a preview only (https://eatsight.chaikadi.pages.dev);
+# production is never touched from that branch.
 # Repository secrets needed: CLOUDFLARE_API_TOKEN (Pages: Edit) and
 # CLOUDFLARE_ACCOUNT_ID.
 on:
   push:
-    branches: [main]
+    branches: [main, eatsight]
   pull_request:
   workflow_dispatch:
 
@@ -29,11 +31,11 @@ jobs:
 
   deploy:
     needs: test
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/eatsight')
     runs-on: ubuntu-latest
     environment:
-      name: production
-      url: https://chaikadi.fyi
+      name: ${{ github.ref == 'refs/heads/main' && 'production' || 'preview' }}
+      url: ${{ github.ref == 'refs/heads/main' && 'https://chaikadi.fyi' || 'https://eatsight.chaikadi.pages.dev' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -57,4 +59,4 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=chaikadi --branch=main --commit-dirty=true
+          command: pages deploy dist --project-name=chaikadi --branch=${{ github.ref_name }} --commit-dirty=true
