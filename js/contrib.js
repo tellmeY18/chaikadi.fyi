@@ -1,4 +1,4 @@
-// Contributions to Eatsights (opt-in, off by default). Only structured facts
+// Contributions to Eatsights (on by default, can be turned off in Settings). Only structured facts
 // leave the device: a price, "sold out", a wait, a 1–5 score, or a new stall's
 // name, kind, city and coarse location. Never names, groups, notes or picks.
 //

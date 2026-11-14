@@ -1,6 +1,6 @@
 // Eatsights contribution UI: share sheet v2, results, one-tap checks, sold
 // out, wait time, quality score, contribution settings and "Add a stall".
-// Everything here is optional and opt-in; nothing is sent while sharing is off.
+// Everything here is optional; nothing is sent while sharing is off.
 import { h, Component } from '../vendor/preact.module.js';
 import htm from '../vendor/htm.module.js';
 import { EATSIGHTS_CITIES } from './config.js';
@@ -15,7 +15,8 @@ const html = htm.bind(h);
 let esClient = null;
 const eatsights = () => (esClient ??= createEatsightsClient());
 const same = (a, b) => String(a).normalize('NFKC').trim().toLowerCase() === String(b).normalize('NFKC').trim().toLowerCase();
-export const sharingOn = view => view.preferences.shareEatsights === true;
+// On unless turned off in Settings. Nothing is sent without a tap (Share, Yes, Done…).
+export const sharingOn = view => view.preferences.shareEatsights !== false;
 export const esSource = menu => (menu?.source && isEatsightsPlace(menu.source.placeId) ? menu.source : null);
 
 // Group item names -> Eatsights ids, using the place's current menu.
