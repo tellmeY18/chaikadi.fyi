@@ -1,4 +1,4 @@
-import { relayServers, DEFAULT_CONFIG, PRESETS, PROTOCOL_VERSION, uid, roomCode, validCode, validateConfig, validateDataBaseUrl, funName } from './config.js';
+import { relayServers, DEFAULT_CONFIG, PRESETS, PROTOCOL_VERSION, uid, roomCode, validCode, validateConfig, funName } from './config.js';
 import { newGroup, reduce, Persistence, migrate } from './state.js';
 import { Network, PUBLIC_INTENTS } from './p2p.js';
 import { orderableItems } from './data.js';
@@ -395,11 +395,7 @@ export class AppStore {
     if (!await this.dispatch('menu.source', { id: linked.id, source })) throw new Error('Could not record where this menu came from.');
     return { ...result, removed, menuId: linked.id };
   }
-  async setDataBaseUrl(url) {
-    this.data.config = { ...this.data.config, dataBaseUrl: url ? validateDataBaseUrl(url) : undefined };
-    if (!url) delete this.data.config.dataBaseUrl;
-    await this.persist(); this.emit();
-  }
+
   // Scanned/imported items go into `menuId` (a new menu named after the
   // scanned heading when omitted). Same-name items in that menu are updated
   // in place, keeping their id so existing picks survive.
@@ -448,9 +444,7 @@ export class AppStore {
     setTimeout(strike, delays[0]);
   }
   async settings(config) {
-    const dataBaseUrl = this.data.config.dataBaseUrl;
     this.data.config = validateConfig(config);
-    if (dataBaseUrl) this.data.config.dataBaseUrl = dataBaseUrl;
     await this.persist();
     this.toast('Connection settings saved. They apply to new connections.');
   }

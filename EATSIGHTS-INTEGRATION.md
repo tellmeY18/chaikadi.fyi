@@ -236,3 +236,13 @@ the same item is not asked again within 14 days; three skips in a row pause aski
 days (the orderer's own changes are kept for the next sheet). Rules: `js/prompts.js`,
 tests: `tests/prompts.test.js` and `tests/eatsights.mjs`. The separate "Still ₹10?" card,
 wait and rating sheets were replaced by this sheet.
+
+## 12. Switched over (2026-11-15)
+
+- Merged to `main`: the menu library reads only from Eatsights
+  (`EATSIGHTS_BASE_URL`, currently develop). The static `chaikadi-data` /
+  `data.chaikadi.fyi` client, the Data source setting, the static fallback, the
+  service-worker data cache, the library address and the GitHub-issue suggestion
+  path are removed (D1, D4, D5 settled). Old caches are deleted on update.
+- Menus already imported from the old library stay in groups as ordinary menus.
+- Before real users: move `EATSIGHTS_BASE_URL` to production Eatsights (its M6).

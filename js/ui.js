@@ -1,8 +1,7 @@
 import { h, render, Component } from '../vendor/preact.module.js';
 import htm from '../vendor/htm.module.js';
-import { CATEGORIES, uid, funGroup, validCode, DATA_REPO_URL, SUGGEST_ENDPOINT, APP_VERSION, DATA_SOURCE, validDataSource } from './config.js';
-import { costs, debts, activeItems, activeMenu, libraryChanges, rankItems, searchItems } from './state.js';
-import { buildSuggestion, suggestionIssueUrl, sendSuggestion } from './data.js';
+import { CATEGORIES, uid, funGroup, validCode, APP_VERSION, EATSIGHTS_URL } from './config.js';
+import { costs, debts, activeItems, activeMenu, rankItems, searchItems } from './state.js';
 import { LibrarySheet } from './library-ui.js';
 import { EsRoundSheet, EsItemSheet, ContribSettings, ResetKeySheet, AddStallSheet, sharingOn, esSource, roundFacts } from './eatsights-ui.js';
 import { planRound, afterSheet, today } from './prompts.js';
@@ -357,57 +356,32 @@ class App extends Component {
       ${v.role === 'host' && s && html`<form class="stack" onSubmit=${e => { e.preventDefault(); this.action('group.currency', { currency: fields(e).currency }); }}><label>${t('groupCurrency')}<span class="with-dice"><input name="currency" required maxlength="8" defaultValue=${s.group.currency} list="currencies"/><button disabled=${s.group.status !== 'open'}>${t('saveCurrency')}</button></span><small>${t('currencyHint')}</small></label><datalist id="currencies"><option value="Rs"/><option value="₹"/><option value="$"/><option value="€"/></datalist></form>`}
       <fieldset><legend>${t('theme')}</legend><div class="segmented">${['light', 'dark'].map(value => html`<button type="button" aria-pressed=${theme === value} onClick=${() => this.run(() => store.preferences({ theme: value }))}>${theme === value && html`<${Icon} name="check" size=${20}/>`}${t(value)}</button>`)}</div></fieldset>
       ${s && html`<button class="outbound" onClick=${() => this.download(store.backup())}><${Icon} name="share"/>${t('export')}</button>`}
-      <section class="stack"><h2>${t('dataSection')}</h2>
-        <fieldset><legend>${t('dataSource')}</legend><div class="segmented">${[['eatsights', 'dataEatsights'], ['static', 'dataStatic']].map(([value, key]) => {
-          const current = validDataSource(v.preferences.dataSource || DATA_SOURCE);
-          return html`<button type="button" aria-pressed=${current === value} onClick=${() => this.run(async () => { await store.preferences({ dataSource: value }); store.toast(t('dataSourceSaved')); })}>${current === value && html`<${Icon} name="check" size=${20}/>`}${t(key)}</button>`;
-        })}</div><small>${t('dataSourceHint')}</small></fieldset></section>
       <${ContribSettings} key=${String(v.preferences.shareEatsights)} view=${v} store=${store} onReset=${done => this.open({ kind: 'resetKey', done })}/>
       ${v.role === 'host' && s && html`<button onClick=${() => this.confirm(t('regenerateConfirm'), t('regenerate'), () => store.regenerateCode())}>${t('regenerate')}</button>`}
       ${s && html`<button class="danger" onClick=${() => this.confirm(t('leaveConfirm'), t('leave'), () => store.leave())}><${Icon} name="alert"/>${t('leave')}</button>`}
       ${v.updateReady ? html`<button class="primary" disabled=${v.updating} onClick=${() => store.applyUpdate?.()}>${t(v.updating ? 'updating' : 'updateNow')}</button>`
         : html`<button class="quiet" disabled=${this.state.checking} onClick=${async () => { this.setState({ checking: true }); const r = await (store.checkForUpdate?.() ?? 'current'); this.setState({ checking: false }); store.toast(t(r === 'ready' ? 'updateFound' : r === 'offline' ? 'updateOffline' : 'upToDate')); }}>${t(this.state.checking ? 'checking' : 'checkUpdates')}</button>`}
       <details class="dev-details" onToggle=${e => this.setState({ devOpen: e.currentTarget.open })}><summary>${t('devOptions')}</summary>${this.state.devOpen && html`<${DevOptions} view=${v} store=${store}/>`}</details>
-      <p class="fineprint">${t('version', APP_VERSION)} · <a href="https://github.com/tellmeY18/chaikadi.fyi" target="_blank" rel="noopener">${t('source')}</a> · <a href=${`${DATA_REPO_URL}#readme`} target="_blank" rel="noopener noreferrer">${t('libraryReadme')}</a></p>
+      <p class="fineprint">${t('version', APP_VERSION)} · <a href="https://github.com/tellmeY18/chaikadi.fyi" target="_blank" rel="noopener">${t('source')}</a> · <a href=${EATSIGHTS_URL} target="_blank" rel="noopener noreferrer">${t('libraryReadme')}</a></p>
       </div>
     </section>`;
   }
   async finishRound(s) {
-    // Offer (never send) library price updates after the round is archived.
-    const source = activeMenu(s)?.source, changes = libraryChanges(s);
-    const ordered = activeItems(s).filter(item => s.picks.some(p => p.itemId === item.id)).map(item => ({ name: item.name, price: item.price }));
+    // Offer (never send) Eatsights contributions after the round is archived.
     const ok = await this.action('round.finish', { nextRoundId: uid(), date: new Date().toISOString() }, t('roundSaved'));
-    if (!ok || !source || source.sample) return;
     const es = esSource(activeMenu(s));
-    // Eatsights: at most one optional sheet, only when it asks something new
-    // (rules and tests: prompts.js). Nothing is sent without "Send".
-    if (es) {
-      const v = this.state.view, store = this.props.store;
-      const soldOut = this.soldOutToday(v).map(id => s.menu.find(i => i.id === id)?.name).filter(Boolean);
-      const items = activeItems(s).filter(item => s.picks.some(p => p.itemId === item.id)).map(item => ({ name: item.name, price: item.price, category: item.category,
-        before: es.items.find(x => x.name.toLowerCase() === item.name.toLowerCase())?.price }));
-      const facts = sharingOn(v) ? await roundFacts(es, items.map(i => i.name)) : [];
-      const { plan, history } = planRound({ isOrderer: s.group.ordererId === v.identity.id, sharing: sharingOn(v), source: es,
-        items: items.map((item, i) => ({ ...item, fact: facts[i] })), soldOut, history: v.preferences.esPrompts, date: today() });
-      await store.preferences({ esPrompts: history }).catch(() => {});
-      if (plan) this.open({ kind: 'esRound', plan, source: es, items });
-      return;
-    }
-    if (changes.length) this.open({ kind: 'share', source, changes });
-  }
-  // Suggest a library update: POST to SUGGEST_ENDPOINT when configured, else
-  // open a prefilled GitHub issue form. Only place, items, prices and date.
-  async suggest({ placeId, city, name, changes }) {
-    const now = new Date();
-    const seen = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    try {
-      const suggestion = buildSuggestion({ placeId, city, name, changes, seen });
-      if (SUGGEST_ENDPOINT && suggestion.changes.length) { await sendSuggestion(suggestion, SUGGEST_ENDPOINT); this.props.store.toast(t('shareSent')); return; }
-      const a = document.createElement('a');
-      a.href = suggestionIssueUrl(suggestion, DATA_REPO_URL); a.target = '_blank'; a.rel = 'noopener noreferrer';
-      a.click();
-      this.props.store.toast(t('shareOpened'));
-    } catch (error) { this.props.store.notice(error.message); }
+    if (!ok || !es) return;
+    // At most one optional sheet, only when it asks something new (rules and
+    // tests: prompts.js). Nothing is sent without "Send".
+    const v = this.state.view, store = this.props.store;
+    const soldOut = this.soldOutToday(v).map(id => s.menu.find(i => i.id === id)?.name).filter(Boolean);
+    const items = activeItems(s).filter(item => s.picks.some(p => p.itemId === item.id)).map(item => ({ name: item.name, price: item.price, category: item.category,
+      before: es.items.find(x => x.name.toLowerCase() === item.name.toLowerCase())?.price }));
+    const facts = sharingOn(v) ? await roundFacts(es, items.map(i => i.name)) : [];
+    const { plan, history } = planRound({ isOrderer: s.group.ordererId === v.identity.id, sharing: sharingOn(v), source: es,
+      items: items.map((item, i) => ({ ...item, fact: facts[i] })), soldOut, history: v.preferences.esPrompts, date: today() });
+    await store.preferences({ esPrompts: history }).catch(() => {});
+    if (plan) this.open({ kind: 'esRound', plan, source: es, items });
   }
   // Sold-out marks are kept on this device for the rest of the day.
   soldOutToday(v) { const m = v.preferences.soldOut; return m?.date === new Date().toDateString() && Array.isArray(m.ids) ? m.ids : []; }
@@ -427,7 +401,7 @@ class App extends Component {
       try { const url = new URL(text), code = url.searchParams.get('room'); if (![location.hostname, 'chaikadi.fyi', 'chaikadi.pages.dev'].includes(url.hostname) || !validCode(code)) throw new Error(); close(); this.run(() => store.join(code, this.homeForm?.elements.name?.value || v.identity.name)); }
       catch { store.notice(t('badQR')); }
     }}/>${error}<//>`;
-    if (p.kind === 'library') return html`<${LibrarySheet} key=${p.initialPlace || 'library'} store=${store} view=${v} initialPlace=${p.initialPlace} initialCity=${p.city} onClose=${close} suggest=${x => this.suggest(x)} onImported=${id => { this.setState({ viewMenu: id, editing: false }); close(); }}
+    if (p.kind === 'library') return html`<${LibrarySheet} key=${p.initialPlace || 'library'} store=${store} view=${v} initialPlace=${p.initialPlace} initialCity=${p.city} onClose=${close} onImported=${id => { this.setState({ viewMenu: id, editing: false }); close(); }}
       onNewMenu=${() => this.open({ kind: 'menuName' })} onAddStall=${city => this.open({ kind: 'addStall', city })}/>`;
     const toSettings = () => { close(); this.go('settings'); };
     if (p.kind === 'esRound') return html`<${EsRoundSheet} plan=${p.plan} source=${p.source} items=${p.items} store=${store} currency=${s?.group.currency || 'Rs'} onClose=${close}
@@ -464,9 +438,6 @@ class App extends Component {
         ${m.id !== s.group.ordererId && html`<button onClick=${() => { close(); this.action('orderer.set', { id: m.id }); }}>${t('makeOrderer')}</button>`}
         <button class="danger" disabled=${s.group.status !== 'open'} onClick=${() => { close(); this.confirm(t('removePerson', m.name), t('remove'), () => this.action('member.remove', { id: m.id })); }}><${Icon} name="alert"/>${t('remove')}</button></div><//>`;
     }
-    if (p.kind === 'share') return html`<${Sheet} title=${t('shareTitle')} onClose=${close}><p>${t('shareIntro')}</p><p class="caption">${p.source.name}</p>
-      <ul class="item-list">${p.changes.map(c => html`<li>${leader(c.name, money(c.price, s.group.currency))}<small>${t('priceWas', money(c.before, s.group.currency), money(c.price, s.group.currency))}</small></li>`)}</ul>
-      <div class="sheet-actions"><button onClick=${close}>${t('notNow')}</button><button class="outbound" onClick=${() => { close(); this.suggest({ placeId: p.source.placeId, city: p.source.city, name: p.source.name, changes: p.changes.map(c => ({ name: c.name, category: c.category, price: c.price / 100 })) }); }}><${Icon} name="external"/>${t('shareAction')}</button></div><//>`;
     if (p.kind === 'copy') return html`<${Sheet} title=${t('selectCopy')} onClose=${close}><textarea readonly rows="8" value=${p.text} onFocus=${e => e.currentTarget.select()} autofocus></textarea><button class="primary" onClick=${close}>${t('done')}</button><//>`;
     if (p.kind === 'locked') return html`<${Sheet} title=${t('order')} onClose=${close} className="lock-reveal"><${Icon} name="tumbler" size=${48}/><div class="typed-lock" aria-hidden="true">${t('locked')}</div><div class="lock-rule" aria-hidden="true"></div><p>${t('lockHelp')}</p><button class="primary" onClick=${close}>${t('done')}</button><//>`;
     if (p.kind === 'shuffle') {

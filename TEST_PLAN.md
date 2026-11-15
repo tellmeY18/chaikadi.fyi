@@ -186,95 +186,7 @@ cellular data on both phones, but leave Wi-Fi on. Precache before this test.
 
 ## Menu library
 
-### One-time setup of chaikadi-data (run by a maintainer)
-
-```sh
-cd ../chaikadi-data
-gh repo create tellmeY18/chaikadi-data --public --source . --remote origin \
-  --description "Volunteer-maintained tea stall menus for chaikadi.fyi (CC0 data)" --homepage https://data.chaikadi.fyi
-git push -u origin main
-# Pages from GitHub Actions (deploy.yml), then the custom domain and HTTPS
-gh api -X POST repos/tellmeY18/chaikadi-data/pages -f build_type=workflow
-gh workflow run deploy.yml --repo tellmeY18/chaikadi-data
-```
-
-DNS (Cloudflare zone chaikadi.fyi): add `CNAME data → tellmey18.github.io`
-with **DNS only** (grey cloud) so GitHub can issue the certificate. Then:
-
-```sh
-gh api -X PUT repos/tellmeY18/chaikadi-data/pages -f cname=data.chaikadi.fyi
-# after GitHub shows the certificate as issued (minutes to an hour):
-gh api -X PUT repos/tellmeY18/chaikadi-data/pages -F https_enforced=true
-# Optional: verify the domain under Settings → Pages (account level) to prevent takeover.
-for l in add-place:EDEDED update-menu:EDEDED problem:EDEDED accepted:111111 stale-report:EDEDED; do
-  gh label create "${l%%:*}" --color "${l##*:}" --repo tellmeY18/chaikadi-data --force
-done
-gh api -X PUT repos/tellmeY18/chaikadi-data/actions/permissions/workflow \
-  -f default_workflow_permissions=read -F can_approve_pull_request_reviews=true
-gh api -X PUT repos/tellmeY18/chaikadi-data/branches/main/protection --input - <<'JSON'
-{ "required_status_checks": { "strict": true, "contexts": ["validate"] },
-  "enforce_admins": true,
-  "required_pull_request_reviews": { "required_approving_review_count": 1, "dismiss_stale_reviews": true },
-  "restrictions": null, "allow_force_pushes": false, "allow_deletions": false }
-JSON
-```
-
-### Manual test plan
-
-1. **Contribution pipeline.** On GitHub, open *Add a place* with a fictional
-   test stall (use a test OSM ID you created on the OSM sandbox, never a real
-   business), 3 item lines and today's date; tick CC0. Add `accepted`.
-   Expect: workflow run → PR from `data/issue-N` with the file, “Closes #N”.
-   Close and reopen the PR to run `validate`; it passes. Merge: `deploy.yml`
-   runs; `https://data.chaikadi.fyi/manifest.json` shows the new commit and a new
-   bundle hash. On chaikadi.fyi open Pick from library: the cached list appears
-   instantly; within seconds (or after closing and reopening the sheet) the
-   new stall appears. Then delete the test stall with a PR.
-2. **Rejected submission.** Submit with the box unticked, a phone number in a
-   name, and a future date; label `accepted`. Expect one bot comment listing
-   all problems, no branch, no PR.
-3. **Update form and stale report.** Open *Update a menu* for a real place via
-   **Suggest an update** in the app: the form opens prefilled with Place ID,
-   today's date and (after a round) changed items. Run *Stale menus report*
-   manually: one pinned issue is created; a second run edits it in place.
-4. **Import and merge.** Pick a stall; Use this menu → a new saved menu with
-   all available items, synced to all peers. Import again: choose **Add missing
-   items only** (no duplicates, group prices kept) then **Replace items**
-   (library prices; extra items removed; existing picks stay). Locked round:
-   replacing the active menu is refused with a clear error.
-5. **Opt-in sharing.** Change a price on the imported menu, order, lock, Finish
-   round. Expect “Share these price updates?” listing only changed items;
-   **Not now** sends nothing (check the Network panel). Share opens the issue.
-6. **Offline.** Open the library once online. Airplane mode, reopen the app:
-   the library opens from cache with “Showing saved menus…”. On a fresh
-   browser profile in airplane mode: the clear “isn’t saved on this device yet”
-   empty state, no spinner forever.
-7. **Hash mismatch.** In Settings set the library address to a local server
-   whose bundle differs from its manifest hash (`node tests/library.mjs` does
-   this automatically). Expect “Downloaded menus did not match the library
-   index…”, nothing imported; with a previously good copy, it stays in use.
-8. **CORS from chaikadi.fyi.** Run the `curl` and console `fetch` checks in
-   README → Menu library. Expect `access-control-allow-origin: *` and JSON.
-   DevTools → Application → Cache Storage shows `chaikadi-data-v1` entries;
-   IndexedDB `chaikadi-library` holds the manifest and verified bundles.
-9. **Accessibility.** Freshness chips read as text; Sample is announced; the
-   sheet traps focus, closes with Escape and returns focus; 200% text works.
-
-### Known limitations and next steps
-
-- Contributing needs a GitHub account. Next: a Cloudflare Worker at
-  `SUGGEST_ENDPOINT` plus a GitHub App that turns POSTed suggestions into issues
-  (rate limits, Turnstile, no personal data stored).
-- One bundle per city (300 KB budget). Larger cities need locality splitting
-  (`in/kl/ernakulam-kaloor`) and a city → locality picker.
-- Search is by name within a chosen city. Next: “nearby” using OSM IDs resolved
-  on the device (no coordinates stored in the library).
-- No photo-of-menu submissions yet; the on-device scanner could prefill an
-  issue form from a photo the contributor took.
-- Build-time `status` advances only on deploy (weekly cron); the app computes
-  freshness itself from `last_confirmed`.
-- Bot PRs created with `GITHUB_TOKEN` do not start `validate` until reopened;
-  a GitHub App token would remove that step.
+The library now comes from Eatsights; see [Eatsights](#eatsights) below.
 
 ## Evidence / release record
 
@@ -313,10 +225,10 @@ JSON
 - Note public signaling failures separately from application failures. Re-run
   with manual pairing or a known-good PeerServer to isolate network causes.
 
-## Eatsights (branch `eatsight`)
+## Eatsights
 
 Unit (run in CI before every deploy): `npm test`
-- `tests/eatsights.test.js`: mapping, id round-trip, ETag cache, static fallback, JCS,
+- `tests/eatsights.test.js`: mapping, id round-trip, ETag cache and offline copy, JCS,
   key_id, signature verification, offline outbox.
 - `tests/prompts.test.js`: when the contribution sheet shows (`js/prompts.js`): only the
   orderer, sharing on, Eatsights menu, not samples; confirmed fresh prices never asked;
@@ -333,11 +245,10 @@ three checks with a per-item rejection; items of a stall without a menu created 
 (section, item, price) after a failed offline attempt; no repeat within 14 days; paused
 after three skips with nothing sent.
 
-`tests/library.mjs` covers the static library (Settings → Data source → Static library).
 
-Manual on the preview (https://eatsight.chaikadi.pages.dev, develop data):
+Manual on https://chaikadi.fyi (develop Eatsights data):
 1. Library: chips, price marks, source line; Kozhikode empty state; offline banners.
-2. Settings: Data source; Contributions On (default)/Off, what is shared, reset key.
+2. Settings: Contributions On (default)/Off, what is shared, reset key; Developer options.
 3. Orderer, Eatsights menu, sharing on: Finish a round with an unconfirmed or changed price →
    "Help the next group"; Not now is the main button; Send shows per-item results.
 4. Add a stall → add items → finish a round: the items appear on Eatsights.

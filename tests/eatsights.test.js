@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createEatsightsClient, mapMenu, toSlug, fromSlug, placeSummary, factSummary } from '../js/eatsights.js';
-import { memoryStorage, withFallback, orderableItems } from '../js/data.js';
+import { memoryStorage, orderableItems } from '../js/data.js';
 import { canonical, createContributor, keyIdOf, b64url, ulid } from '../js/contrib.js';
 
 const PL = 'pl_01M7BHQY50D2K939M5G5K824XX', SC = 'sc_01M7BHQY5750K7PNHST10PXP47';
@@ -85,19 +85,6 @@ test('client loads a city, caches it, and revalidates menus with ETags', async (
   assert.equal((await again.loadCityBundle('in/kl/ernakulam')).cached, true, 'offline: cached copy');
   const place = await again.placeMenu(toSlug(PL), 'in/kl/ernakulam');
   assert.equal(place.name, 'E2E Chaya Kada', 'offline menu from cache');
-});
-
-test('falls back to the static library when Eatsights is unreachable and nothing is cached', async () => {
-  const api = fakeApi({ fail: true });
-  const primary = createEatsightsClient({ fetchImpl: api.fetchImpl, storage: memoryStorage(), online: () => true });
-  const staticPlace = { id: 'chai-corner', name: 'Chai Corner', last_confirmed: '2026-10-01', sections: [] };
-  const fallback = { subscribe: () => {}, loadCityBundle: async city => ({ bundle: { city, places: [staticPlace] }, cached: false }),
-    searchPlaces: async () => [staticPlace], getPlace: async () => staticPlace };
-  const client = withFallback(primary, fallback);
-  const result = await client.loadCityBundle('in/kl/ernakulam');
-  assert.equal(result.fallback, true);
-  assert.equal(result.bundle.fallback, true);
-  assert.equal((await client.searchPlaces('in/kl/ernakulam', ''))[0].fallback, true);
 });
 
 test('canonical JSON sorts keys and drops nothing else (RFC 8785 subset)', () => {

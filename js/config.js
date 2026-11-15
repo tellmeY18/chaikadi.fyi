@@ -16,7 +16,7 @@ export function relayServers(dev = {}) {
 export const EXTRA_STUN = ['stun:stun.cloudflare.com:3478', 'stun:stun1.l.google.com:19302'];
 export const ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
 // Shown in Settings. Bump with the service-worker cache version on release.
-export const APP_VERSION = '2026.11.15-eatsight-7';
+export const APP_VERSION = '2026.11.15-1';
 // Multi-menu writes require the same protocol on every peer. Storage remains
 // schema 1 with an additive migration; old app versions must not drop menu IDs.
 // v3: menus can record the library place they were imported from.
@@ -24,23 +24,12 @@ export const APP_VERSION = '2026.11.15-eatsight-7';
 // v5: items carry `popularity`; host/orderer can set prices while locked.
 export const PROTOCOL_VERSION = 5;
 
-// MENU LIBRARY HOOK. Volunteer-maintained CC0 menu data (static JSON).
-// DATA_BASE_URL can be overridden per device in Settings; the service worker
-// runtime-caches only this default origin (other origins use IndexedDB only).
-export const DATA_BASE_URL = 'https://data.chaikadi.fyi';
-export const DATA_FETCH_TIMEOUT_MS = 8000;
-// Optional HTTPS endpoint accepting suggested menu updates as JSON. Empty means
-// "open a prefilled GitHub issue" instead. Never receives personal data.
-export const SUGGEST_ENDPOINT = '';
-export const DATA_REPO_URL = 'https://github.com/tellmeY18/chaikadi-data';
-
-// EATSIGHTS HOOK. Open food data API (https://github.com/tellmeY18/eatsights).
-// DATA_SOURCE picks the library: 'eatsights' (falls back to the static library
-// when Eatsights is unreachable and nothing is cached) or 'static'.
-// Overridable per device in Settings. Production: https://eatsights.letsimpl.fyi
-export const DATA_SOURCE = 'eatsights';
+// MENU LIBRARY HOOK. Menus come from Eatsights, the open food data API
+// (https://github.com/tellmeY18/eatsights): CC0 data, public reads, opt-out
+// signed contributions. Production will be https://eatsights.letsimpl.fyi.
 export const EATSIGHTS_BASE_URL = 'https://develop.letsimpl.fyi';
 export const EATSIGHTS_URL = 'https://github.com/tellmeY18/eatsights';
+export const DATA_FETCH_TIMEOUT_MS = 8000;
 // Eatsights has no cities endpoint yet. id: Chaikadi city id; slug: Eatsights
 // `city`; centre: used as a coarse location for new stalls (precision 5 km).
 export const EATSIGHTS_CITIES = [
@@ -49,18 +38,6 @@ export const EATSIGHTS_CITIES = [
   { id: 'in/kl/kozhikode', slug: 'kozhikode', name: 'Kozhikode', centre: { lat: 11.2588, lng: 75.7804 } },
   { id: 'in/kl/thrissur', slug: 'thrissur', name: 'Thrissur', centre: { lat: 10.5276, lng: 76.2144 } },
 ];
-export const validDataSource = value => (value === 'static' || value === 'eatsights' ? value : DATA_SOURCE);
-
-// https:// origins only; http:// is allowed for localhost while developing.
-export function validateDataBaseUrl(value) {
-  let url;
-  try { url = new URL(String(value).trim()); } catch { throw new Error('Enter a full URL, for example https://data.chaikadi.fyi'); }
-  const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
-  if (!(url.protocol === 'https:' || (local && url.protocol === 'http:')) || url.username || url.password || url.search || url.hash) {
-    throw new Error('Use an https:// address without a username, query or #fragment.');
-  }
-  return url.href.replace(/\/+$/, '');
-}
 export const CATEGORIES = ['Tea', 'Snacks', 'Meal', 'Other'];
 // The basic menu every new session starts with. Prices are 0: the host sets
 // them (Costs tab) before entering the bill. [name, category, popularity]

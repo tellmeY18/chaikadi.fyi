@@ -60,9 +60,8 @@ BROWSER=webkit node tests/browser.mjs  # WebKit equivalent
 node tests/room.mjs                    # real public signaling; needs internet
 node tests/scan.mjs                    # on-device menu OCR, online + offline
 node tests/design.mjs                  # multiple menus, themes, sheets, 200% text
-node tests/library.mjs                 # menu library import, offline, hash checks
+node tests/eatsights.mjs               # Eatsights library and contribution triggers (fake API)
 node tests/update.mjs                  # in-app update: waits, Update now, state kept
-node tests/live-library.mjs            # production smoke: chaikadi.fyi + data host
 node --test tests/data.test.js         # library client only (no browser)
 ```
 
@@ -234,64 +233,39 @@ printed menu section. Handwritten boards and non-Latin scripts (e.g. Malayalam,
 Hindi) are not recognised by the English model; adding a language means
 vendoring its `*.traineddata.gz` and passing `'eng+mal'` to `createWorker`.
 
-## Menu library (shared, volunteer-maintained)
+## Menu library (Eatsights)
 
 Groups can **Pick from library** on the Menu tab: choose a city (remembered),
-search a stall by name, preview its menu-board rows with a freshness chip, and
-**Use this menu**. The data is a separate CC0 repository,
-[`chaikadi-data`](https://github.com/tellmeY18/chaikadi-data), published as
-static JSON at `https://data.chaikadi.fyi`.
+search a stall by name, preview its menu with freshness marks, and **Use this
+menu**. Menus come from [Eatsights](https://github.com/tellmeY18/eatsights), the
+open (CC0) food data API, at `EATSIGHTS_BASE_URL` in `js/config.js`
+(currently `https://develop.letsimpl.fyi`). Only its public API is used.
 
-- **Import:** creates a saved menu named after the stall, linked to its library
-  ID and a snapshot of library prices, through the normal `menu.create` /
-  `menu.upsert` intents so every peer receives it. Importing a stall that is
-  already linked asks **Add missing items only** (keeps group prices) or
-  **Replace items** (library prices; removes items the library lacks; same-name
-  items keep their IDs so picks survive). Unavailable items are skipped. The
-  library `Coffee` category maps to the app's `Tea` (drinks) category.
-- **Freshness:** computed on the device from `last_confirmed` using the
-  manifest thresholds (≤ 90 days “Confirmed N days ago”, ≤ 365 “Prices may be
-  old”, otherwise “Not confirmed recently”). Every chip has an icon and words.
-  Fictional sample stalls are labelled **Sample**.
-- **Suggest an update:** if `SUGGEST_ENDPOINT` (in `js/config.js`) is set, a
-  validated JSON body is POSTed (no credentials). Otherwise a prefilled
-  GitHub *Update a menu* issue opens in a new tab. Payloads contain only the
-  place ID, city, stall name, item names/categories/prices and today's date —
-  never member names, group names, notes or picks.
-- **After Finish round:** if the round's menu came from the library and its
-  prices were changed, the orderer sees **Share these price updates?** with only
-  the changed items. **Not now** is the primary button; nothing is ever sent
-  automatically. Sample stalls never prompt.
-- **Settings:** the library address can be changed per device (HTTPS only;
-  `http://localhost` for development), with the CC0 attribution line.
+- **Read:** `js/eatsights.js` lists a city's stalls (`GET /v1/places?city=…`),
+  loads each menu (`GET /v1/places/{id}/menu`, ETag/304) and maps it to the
+  library place shape, which still goes through `sanitizePlace` in
+  `js/data.js` (untrusted input: caps, patterns, cleaned text). Eatsights ids map
+  to `es-…` slugs, so the group protocol is unchanged. Cached data shows first and
+  refreshes in the background; menus stay usable offline from IndexedDB.
+- **Freshness:** from Eatsights fact status: *Confirmed by N people · N days
+  ago*, *N reports*, *Prices disagree*, *Not confirmed recently*. Price marks
+  show unconfirmed, disputed, stale and stall-declared prices. Icon + words,
+  never colour alone.
+- **Import:** a saved menu linked to the stall through the normal
+  `menu.create` / `menu.upsert` intents. Re-importing asks **Add missing items
+  only** or **Replace items**.
+- **Contributions (on by default, Settings → Contributions):** after Finish,
+  the orderer may get one optional **Help the next group** sheet (rules:
+  `js/prompts.js`): changed prices, items Eatsights lacks, up to 3 uncertain
+  prices, sold-out marks, wait time and a weekly 1–5 rating. **Not now** is the
+  main button; nothing is sent without **Send**. Observations are signed with an
+  Ed25519 key made on the device (`js/contrib.js`, Eatsights proposal 0001) and
+  queued while offline. Never names, groups, notes or picks.
+- **Add a stall:** name, kind, city; city-centre location (5 km); duplicate
+  check first.
 
-### Offline, caching and integrity
-
-`js/data.js` has no UI code. `loadManifest()`, `loadCityBundle(cityId)`,
-`searchPlaces(cityId, query)` and `getPlace(id)` return cached IndexedDB data
-immediately and revalidate in the background when online (requests use
-`cache: 'reload'`, which also tells the service worker to go network-first).
-Each city bundle is verified against the manifest `sha256` (Web Crypto). On a
-mismatch the download is discarded and the last good copy kept. Never-cached
-plus offline shows a clear empty state. All data is treated as untrusted:
-response size caps, schema and pattern checks, unknown fields dropped, control
-and bidi-override characters removed, text rendered only as escaped text.
-
-The service worker runtime-caches `https://data.chaikadi.fyi` in the versioned
-`chaikadi-data-v1` cache (stale-while-revalidate) and deletes unknown
-`chaikadi-*` caches on activation. A custom library address is cached through
-IndexedDB only.
-
-**CORS:** GitHub Pages sends `Access-Control-Allow-Origin: *`. Check:
-
-```sh
-curl -sI -H "Origin: https://chaikadi.fyi" https://data.chaikadi.fyi/v2/manifest.json | grep -i access-control
-# In the browser console on https://chaikadi.fyi:
-fetch('https://data.chaikadi.fyi/v2/manifest.json', { credentials: 'omit' }).then(r => r.json()).then(console.log)
-```
-
-Data repo setup, deployment and the library test plan are in
-[TEST_PLAN.md](TEST_PLAN.md#menu-library).
+Design and decisions: [EATSIGHTS-INTEGRATION.md](EATSIGHTS-INTEGRATION.md).
+Tests: `tests/eatsights.test.js`, `tests/prompts.test.js`, `tests/eatsights.mjs`.
 
 ## Connections
 
@@ -486,8 +460,8 @@ chaikadi.fyi/
 │   ├── design.test.js         contrast, font budget and money formatting
 │   ├── design.mjs             theme, menu sheets and 200% text browser checks
 │   ├── data.test.js           library cache-first, hash mismatch, offline, import
-│   ├── library.mjs            library browser flow incl. opt-in share
-│   ├── fixtures/data/         manifest + bundle copied from chaikadi-data build
+│   ├── eatsights.mjs          library + contribution rounds against a fake Eatsights
+│   ├── fixtures/data/         sample places (library place shape) for data tests
 │   ├── browser.mjs            optional real-browser smoke (needs updating for v0.3)
 │   ├── room.mjs               optional public-cloud / room-reconnect smoke
 │   ├── scan.mjs               optional real-browser menu-scan test

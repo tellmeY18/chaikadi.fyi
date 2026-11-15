@@ -1,111 +1,16 @@
-// Menu library client tests. Fixtures are copied verbatim from the
-// chaikadi-data build output (manifest + Ernakulam bundle). No build step:
-//   node --test tests/data.test.js
+// Library data rules: sanitizing places, orderable lines, search, importing
+// into a group menu. Places come from the chaikadi-data fixtures (the same
+// shape Eatsights menus are mapped into).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createDataClient, memoryStorage, sanitizePlace, sanitizeManifest, cleanText, freshnessOf, matchPlaces, orderableItems, placeItems,
-  buildSuggestion, suggestionIssueUrl, sendSuggestion } from '../js/data.js';
+import { sanitizePlace, cleanText, matchPlaces, orderableItems } from '../js/data.js';
 import { AppStore } from '../js/store.js';
 import { libraryChanges } from '../js/state.js';
 
-const BASE = 'https://data.example.test';
-const fixture = path => readFileSync(new URL(`fixtures/data/${path}`, import.meta.url));
-const V2 = `${BASE}/v2/manifest.json`, V2_CITY = `${BASE}/v2/index/in-kl-ernakulam.json`;
-const files = {
-  [V2]: fixture('v2/manifest.json'), [V2_CITY]: fixture('v2/index/in-kl-ernakulam.json'),
-  [`${BASE}/manifest.json`]: fixture('manifest.json'), [`${BASE}/index/in-kl-ernakulam.json`]: fixture('index/in-kl-ernakulam.json'),
-};
+const bundle = JSON.parse(readFileSync(new URL('fixtures/data/v2/index/in-kl-ernakulam.json', import.meta.url), 'utf8'));
+const placeById = id => sanitizePlace(bundle.places.find(p => p.id === id));
 const SFK = 'smart-foodie-kitchen-cyber-green';
-function fakeNetwork(overrides = {}) {
-  const calls = [];
-  let offline = false;
-  const fetchImpl = async (url, options) => {
-    calls.push({ url, cache: options.cache, credentials: options.credentials });
-    if (offline) throw new TypeError('Failed to fetch');
-    const body = overrides[url] ?? files[url];
-    if (!body) return new Response('missing', { status: 404 });
-    return new Response(body, { status: 200, headers: { 'content-type': 'application/json' } });
-  };
-  return { fetchImpl, calls, setOffline: value => { offline = value; }, online: () => !offline };
-}
-const client = (net, storage = memoryStorage()) => createDataClient({ baseUrl: BASE, fetchImpl: net.fetchImpl, storage, online: net.online, timeoutMs: 1000 });
-const settle = () => new Promise(r => setTimeout(r, 10));
-
-test('first load fetches, verifies the sha256 and caches; searchPlaces and getPlace work', async () => {
-  const net = fakeNetwork(), c = client(net);
-  const { manifest, cached } = await c.loadManifest();
-  assert.equal(cached, false);
-  assert.equal(manifest.cities[0].name, 'Ernakulam');
-  const { bundle, verified } = await c.loadCityBundle('in/kl/ernakulam');
-  assert.equal(verified, true);
-  assert.equal(bundle.places.length, 4);
-  assert.equal(net.calls[0].url, V2, 'v2 first');
-  assert.ok(net.calls.every(call => call.credentials === 'omit'));
-  assert.deepEqual((await c.searchPlaces('in/kl/ernakulam', 'snack edap')).map(p => p.id), ['sample-snack-counter-edappally']);
-  assert.deepEqual((await c.searchPlaces('in/kl/ernakulam', 'cyber green')).map(p => p.id), [SFK], 'search covers the location');
-  assert.equal((await c.searchPlaces('in/kl/ernakulam', '')).length, 4);
-  const place = await c.getPlace('sample-meals-hotel-fort-kochi');
-  assert.equal(place.city, 'in/kl/ernakulam');
-  assert.equal(place.sample, true);
-});
-
-test('stale-while-revalidate: cached data returns immediately, refresh happens in the background', async () => {
-  const net = fakeNetwork(), storage = memoryStorage();
-  await client(net, storage).loadCityBundle('in/kl/ernakulam');
-  const second = client(net, storage);
-  let resolveSlow;
-  const slow = new Promise(r => { resolveSlow = r; });
-  const slowNet = { ...net, fetchImpl: async (...args) => { await slow; return net.fetchImpl(...args); } };
-  const third = createDataClient({ baseUrl: BASE, fetchImpl: slowNet.fetchImpl, storage, online: net.online, timeoutMs: 1000 });
-  const result = await third.loadManifest();
-  assert.equal(result.cached, true, 'served from cache without waiting for the network');
-  const events = [];
-  third.subscribe(e => events.push(e.type));
-  resolveSlow(); await settle();
-  assert.equal(net.calls.at(-1).cache, 'reload', 'background refresh bypasses HTTP and SW caches');
-  assert.deepEqual(events, [], 'unchanged manifest does not emit an update');
-  assert.equal((await second.loadCityBundle('in/kl/ernakulam')).cached, true);
-});
-
-test('a bundle whose bytes do not match the manifest hash is discarded and the last good copy kept', async () => {
-  const storage = memoryStorage();
-  // First visit: tampered bundle, nothing cached -> clear error, nothing stored.
-  // Same length, different bytes: only the sha256 check can catch it.
-  const tampered = Buffer.from(files[V2_CITY].toString().replace('"Chai"', '"Tea!"'));
-  const evil = fakeNetwork({ [V2_CITY]: tampered });
-  await assert.rejects(client(evil, storage).loadCityBundle('in/kl/ernakulam'), e => e.code === 'hash-mismatch');
-  assert.equal(await storage.get(`v2:bundle:${BASE}:in/kl/ernakulam`), null);
-  // Good copy cached; then a new manifest announces a hash the server cannot satisfy.
-  await client(fakeNetwork(), storage).loadCityBundle('in/kl/ernakulam');
-  const manifest = JSON.parse(files[V2]);
-  manifest.cities[0].sha256 = 'f'.repeat(64);
-  const net = fakeNetwork({ [V2]: JSON.stringify(manifest), [V2_CITY]: tampered });
-  const c = client(net, storage);
-  const errors = [];
-  c.subscribe(e => { if (e.type === 'error') errors.push(e.error.code); });
-  await c.refreshManifest();
-  const result = await c.loadCityBundle('in/kl/ernakulam');
-  assert.equal(result.verified, false);
-  assert.equal(placeItems(result.bundle.places[0])[0].item.name, 'Chai', 'last good copy is still served');
-  await settle();
-  assert.deepEqual(errors, ['hash-mismatch']);
-  assert.equal(placeItems((await storage.get(`v2:bundle:${BASE}:in/kl/ernakulam`)).data.places[0])[0].item.name, 'Chai');
-});
-
-test('offline: cached data works; never-cached data gives a clear offline-empty error', async () => {
-  const storage = memoryStorage(), net = fakeNetwork();
-  net.setOffline(true);
-  await assert.rejects(client(net, storage).loadManifest(), e => e.code === 'offline-empty');
-  net.setOffline(false);
-  await client(net, storage).loadCityBundle('in/kl/ernakulam');
-  net.setOffline(true);
-  const before = net.calls.length;
-  const c = client(net, storage);
-  assert.equal((await c.loadManifest()).cached, true);
-  assert.equal((await c.searchPlaces('in/kl/ernakulam', 'chai')).length, 1);
-  assert.equal(net.calls.length, before, 'no network attempts while offline');
-});
 
 test('untrusted data: unknown fields dropped, text cleaned, limits enforced, bad places skipped', () => {
   const place = sanitizePlace({ id: 'stall', name: 'Stall\u202e <b>x</b>', currency: 'INR', last_confirmed: '2026-11-01', evil: 'x', url: 'javascript:alert(1)',
@@ -120,51 +25,14 @@ test('untrusted data: unknown fields dropped, text cleaned, limits enforced, bad
     osm: { type: 'way', id: 5, relation: 'inside' }, location: { building: 'B' }, itemCount: 2 });
   assert.equal(sanitizePlace({ id: 'node/1', name: 'X', currency: 'INR', last_confirmed: 'yesterday', menu: [] }), null);
   assert.equal(cleanText('x'.repeat(500)).length, 80);
-  const manifest = sanitizeManifest({ schemaVersion: 1, cities: [
-    { id: 'in/kl/a', name: 'A', url: 'https://evil.example/x.json', sha256: 'a'.repeat(64), bytes: 10 },
-    { id: 'in/kl/b', name: 'B', url: 'index/in-kl-b.json', sha256: 'a'.repeat(64), bytes: 10 ** 9 },
-    { id: 'in/kl/c', name: 'C', url: 'index/in-kl-c.json', sha256: 'a'.repeat(64), bytes: 10 }] });
-  assert.deepEqual(manifest.cities.map(c => c.id), ['in/kl/c']);
-  assert.throws(() => sanitizeManifest({ schemaVersion: 3, cities: [] }), /supported/);
 });
 
-test('oversized responses are rejected before parsing', async () => {
-  const net = fakeNetwork({ [V2]: 'x'.repeat(200 * 1024) });
-  await assert.rejects(client(net).loadManifest(), e => e.code === 'too-large');
-});
-
-test('freshness thresholds match the data repo and search folds accents', () => {
-  const now = new Date('2026-11-12T10:00:00Z');
-  assert.deepEqual(freshnessOf('2026-11-12', {}, now), { days: 0, status: 'fresh' });
-  assert.equal(freshnessOf('2026-08-14', {}, now).status, 'fresh');
-  assert.equal(freshnessOf('2026-08-13', {}, now).status, 'stale');
-  assert.equal(freshnessOf('2025-11-11', {}, now).status, 'unverified');
+test('search folds accents', () => {
   assert.deepEqual(matchPlaces([{ name: 'Café Kochi' }, { name: 'Chai Kochi' }], 'cafe').map(p => p.name), ['Café Kochi']);
 });
 
-test('suggestions carry only place, items, prices and date', async () => {
-  const s = buildSuggestion({ placeId: 'sample-chai-corner-kaloor', city: 'in/kl/ernakulam', name: 'Sample Chai Corner, Kaloor', seen: '2026-11-12',
-    changes: [{ name: 'Chai', category: 'Tea', price: 14, member: 'Anu' }, { name: 'Bad | pipe', category: 'Tea', price: 1 }] });
-  assert.deepEqual(s, { schemaVersion: 1, kind: 'update-menu', placeId: 'sample-chai-corner-kaloor', city: 'in/kl/ernakulam', name: 'Sample Chai Corner, Kaloor', seen: '2026-11-12',
-    changes: [{ name: 'Chai', category: 'Tea', price: 14 }] });
-  const url = new URL(suggestionIssueUrl(s, 'https://github.com/tellmeY18/chaikadi-data'));
-  assert.equal(url.pathname, '/tellmeY18/chaikadi-data/issues/new');
-  assert.equal(url.searchParams.get('template'), 'update-menu.yml');
-  assert.equal(url.searchParams.get('place-id'), 'in/kl/ernakulam/sample-chai-corner-kaloor');
-  assert.equal(url.searchParams.get('date-seen'), '2026-11-12');
-  assert.equal(url.searchParams.get('changes'), 'Chai | Tea | 14');
-  const long = suggestionIssueUrl({ ...s, changes: Array.from({ length: 150 }, (_, i) => ({ name: `Item number ${i} with a longer name`, category: 'Meal', price: 100 })) }, 'https://github.com/x/y');
-  assert.ok(long.length <= 6000);
-  let sent;
-  await sendSuggestion(s, 'https://suggest.example.test/menu', { fetchImpl: async (url, init) => { sent = { url, init }; return new Response(null, { status: 202 }); } });
-  assert.equal(sent.init.credentials, 'omit');
-  assert.deepEqual(JSON.parse(sent.init.body), s);
-  await assert.rejects(sendSuggestion(s, 'http://insecure.example.test'), /HTTPS/);
-});
-
 test('importing a library place: new menu, then add-missing or replace without duplicates', async () => {
-  const net = fakeNetwork(), c = client(net);
-  const stall = await c.getPlace('sample-snack-counter-edappally', 'in/kl/ernakulam');
+  const stall = placeById('sample-snack-counter-edappally');
   const app = new AppStore(); app.db = { save: async () => {} };
   app.startRoom = () => {}; await app.create('Crew', 'Host', { starter: false });
   const first = await app.importLibraryPlace(stall, 'in/kl/ernakulam');
@@ -201,24 +69,8 @@ test('reducer rejects malformed library links from peers', async () => {
   assert.equal(app.data.state.menus.length, 0);
 });
 
-test('older data hosts: v1 manifest and flat bundles are used when v2 is missing', async () => {
-  const net = fakeNetwork({ [V2]: undefined });
-  delete files[V2];
-  try {
-    const c = client(net);
-    const { manifest } = await c.loadManifest();
-    assert.equal(manifest.schemaVersion, 1);
-    const { bundle } = await c.loadCityBundle('in/kl/ernakulam');
-    assert.deepEqual(bundle.places.map(p => p.id), ['node/9000000000001', 'node/9000000000002', 'way/9000000000003']);
-    const hotel = bundle.places[2];
-    assert.deepEqual(hotel.osm, { type: 'way', id: 9000000000003, relation: 'is' });
-    assert.ok(orderableItems(hotel).some(i => i.name === 'Omelette (Double)' && i.price === 50));
-  } finally { files[V2] = fixture('v2/manifest.json'); }
-});
-
 test('a rich v2 place imports variants as separate items and skips unpriced ones', async () => {
-  const c = client(fakeNetwork());
-  const place = await c.getPlace(SFK, 'in/kl/ernakulam');
+  const place = placeById(SFK);
   assert.deepEqual(place.osm, { type: 'way', id: 1292036173, relation: 'inside' });
   assert.equal(place.tax.included, false);
   assert.equal(place.sections[0].sections[0].name, 'Breads');

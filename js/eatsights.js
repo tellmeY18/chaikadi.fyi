@@ -1,13 +1,12 @@
-// Eatsights read client: the same interface as createDataClient (data.js), so
-// the library UI and store do not care where menus come from. Uses only the
+// The menu library, read from Eatsights. Uses only the
 // public Eatsights API (no keys, no special endpoints). Everything fetched is
 // untrusted: places go through sanitizePlace and the Eatsights facts are
 // reduced to a small, validated `es` summary per place and item.
 //
-// Caching mirrors data.js: cached data first, refresh in the background,
-// IndexedDB per place menu with its ETag (304 keeps the cached copy).
+// Caching: cached data first, refresh in the background, IndexedDB per place
+// menu with its ETag (304 keeps the cached copy), so the library works offline.
 import { EATSIGHTS_BASE_URL, EATSIGHTS_CITIES, DATA_FETCH_TIMEOUT_MS } from './config.js';
-import { DataError, sanitizePlace, matchPlaces, idbStorage, cleanText, registerEatsights } from './data.js';
+import { DataError, sanitizePlace, matchPlaces, idbStorage, cleanText } from './data.js';
 
 const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 const STATUSES = ['confirmed', 'unconfirmed', 'contested', 'stale'];
@@ -235,4 +234,14 @@ export function createEatsightsClient({ baseUrl = EATSIGHTS_BASE_URL, cities = E
     subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); } };
 }
 
-registerEatsights(() => createEatsightsClient());
+// ---- the client used by the app -----------------------------------------------
+let client = null;
+const appListeners = new Set();
+export function libraryClient() {
+  if (!client) { client = createEatsightsClient(); client.subscribe(event => { for (const fn of appListeners) fn(event); }); }
+  return client;
+}
+export const loadManifest = () => libraryClient().loadManifest();
+export const loadCityBundle = cityId => libraryClient().loadCityBundle(cityId);
+export const searchPlaces = (cityId, query) => libraryClient().searchPlaces(cityId, query);
+export function subscribeData(fn) { appListeners.add(fn); return () => appListeners.delete(fn); }
