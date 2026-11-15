@@ -140,10 +140,10 @@ test('extra public STUN servers are added once', async () => {
   assert.ok(out.some(s => s.urls === 'stun:stun1.l.google.com:19302'));
 });
 
-test('relay choice: free relay by default, own server, or off', async () => {
-  const { relayServers, FREE_RELAYS } = await import('../js/config.js');
-  assert.equal(relayServers(), FREE_RELAYS);
-  assert.deepEqual(relayServers({ relay: 'off' }), []);
+test('relay choice: none by default, or your own server', async () => {
+  const { relayServers } = await import('../js/config.js');
+  assert.deepEqual(relayServers(), []);
+  assert.deepEqual(relayServers({ relay: 'auto' }), [], 'old saved "free relay" choice: none');
   assert.deepEqual(relayServers({ relay: 'custom', custom: { urls: 'turn:a.example:3478, https://bad , turns:a.example:443?transport=tcp', username: 'u', credential: 'p' } }),
     [{ urls: ['turn:a.example:3478', 'turns:a.example:443?transport=tcp'], username: 'u', credential: 'p' }]);
   assert.deepEqual(relayServers({ relay: 'custom', custom: { urls: '' } }), []);

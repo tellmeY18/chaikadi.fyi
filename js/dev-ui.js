@@ -54,7 +54,7 @@ export class DevOptions extends Component {
     this.setState({ testing: false, test: result });
   }
   render({ view, store }) {
-    const dev = view.preferences.dev || {}, relay = dev.relay || 'auto';
+    const dev = view.preferences.dev || {}, relay = dev.relay === 'custom' ? 'custom' : 'off';
     const { details: d, log, test, testing, custom } = this.state;
     const set = patch => store.devOptions(patch);
     const row = (k, v) => html`<tr><th scope="row">${k}</th><td>${v}</td></tr>`;
@@ -78,8 +78,8 @@ export class DevOptions extends Component {
         <span>${t('devLinkLine', l.ice, l.openFor, l.quietFor)}</span>
         <span>${l.route ? `${ROUTE[l.route.local] || l.route.local} → ${ROUTE[l.route.remote] || l.route.remote}${l.route.protocol ? ` · ${l.route.protocol}` : ''}${l.route.rttMs !== null ? ` · ${l.route.rttMs} ms` : ''}` : t('devRouteUnknown')}</span></li>`)}</ul>`}`}
 
-      <fieldset><legend>${t('devRelay')}</legend><div class="choice-row">${[['auto', 'devRelayAuto'], ['custom', 'devRelayCustom'], ['off', 'devRelayOff']].map(([value, key]) => html`<button type="button" aria-pressed=${relay === value} onClick=${() => set({ relay: value })}>${t(key)}</button>`)}</div>
-        <small>${t(relay === 'off' ? 'devRelayOffHint' : relay === 'custom' ? 'devRelayCustomHint' : 'devRelayAutoHint')}</small></fieldset>
+      <fieldset><legend>${t('devRelay')}</legend><div class="choice-row">${[['off', 'devRelayOff'], ['custom', 'devRelayCustom']].map(([value, key]) => html`<button type="button" aria-pressed=${relay === value} onClick=${() => set({ relay: value })}>${t(key)}</button>`)}</div>
+        <small>${t(relay === 'custom' ? 'devRelayCustomHint' : 'devRelayOffHint')}</small></fieldset>
       ${relay === 'custom' && html`<form class="stack" onSubmit=${e => { e.preventDefault(); set({ custom }); store.toast(t('devSaved')); }}>
         <label>${t('devTurnUrls')}<input value=${custom.urls} placeholder="turn:turn.example.com:3478, turns:turn.example.com:443?transport=tcp" autocomplete="off" spellcheck=${false} onInput=${e => this.setState({ custom: { ...custom, urls: e.currentTarget.value } })}/></label>
         <label>${t('devTurnUser')}<input value=${custom.username} autocomplete="off" spellcheck=${false} onInput=${e => this.setState({ custom: { ...custom, username: e.currentTarget.value } })}/></label>
