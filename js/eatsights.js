@@ -8,6 +8,8 @@
 import { EATSIGHTS_BASE_URL, EATSIGHTS_CITIES, DATA_FETCH_TIMEOUT_MS } from './config.js';
 import { DataError, sanitizePlace, matchPlaces, idbStorage, cleanText } from './data.js';
 
+// A saved city younger than this is shown without refetching.
+const REFRESH_AFTER_MS = 60000;
 const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 const STATUSES = ['confirmed', 'unconfirmed', 'contested', 'stale'];
 export const ES_PREFIX = 'es-';
@@ -188,12 +190,16 @@ export function createEatsightsClient({ baseUrl = EATSIGHTS_BASE_URL, cities = E
         while (next < ids.length) { const i = next++; try { places[i] = await fetchMenu(ids[i], cityId); } catch (error) { if (error.code === 'offline') throw error; places[i] = null; } }
       }));
       const bundle = { city: cityId, generatedAt: new Date().toISOString(), source: 'eatsights', places: places.filter(Boolean) };
+      const previous = (await storage.get(key('bundle', cityId)))?.data;
+      const changed = JSON.stringify(previous?.places) !== JSON.stringify(bundle.places);
       await storage.set(key('bundle', cityId), { data: bundle, fetchedAt: Date.now() });
       const counts = await storage.get(key('counts')) || {};
       counts[cityId] = bundle.places.length;
       await storage.set(key('counts'), counts);
       memory.set(cityId, bundle);
-      emit({ type: 'bundle', cityId, bundle });
+      // Only real changes are announced: listeners reload the city, and an
+      // unchanged refresh must not start another refresh.
+      if (changed) emit({ type: 'bundle', cityId, bundle });
       return bundle;
     });
   }
@@ -203,7 +209,7 @@ export function createEatsightsClient({ baseUrl = EATSIGHTS_BASE_URL, cities = E
     const cached = await storage.get(key('bundle', cityId));
     if (cached?.data) {
       memory.set(cityId, cached.data);
-      background(`city:${cityId}`, () => refreshCity(cityId));
+      if (!(Date.now() - (cached.fetchedAt || 0) < REFRESH_AFTER_MS)) background(`city:${cityId}`, () => refreshCity(cityId));
       return { bundle: cached.data, cached: true, verified: true, fetchedAt: cached.fetchedAt };
     }
     if (!online()) throw new DataError('offline-empty', 'This city’s menus aren’t saved on this device yet.');

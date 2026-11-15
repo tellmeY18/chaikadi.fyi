@@ -87,6 +87,21 @@ test('client loads a city, caches it, and revalidates menus with ETags', async (
   assert.equal(place.name, 'E2E Chaya Kada', 'offline menu from cache');
 });
 
+test('reopening a city does not refetch in a loop: unchanged refreshes stay quiet', async () => {
+  const storage = memoryStorage(), api = fakeApi();
+  const c = createEatsightsClient({ fetchImpl: api.fetchImpl, storage, online: () => true });
+  let events = 0;
+  // The library sheet reloads the city on every 'bundle' event, like the UI.
+  c.subscribe(e => { if (e.type === 'bundle') { events++; c.loadCityBundle('in/kl/ernakulam'); } });
+  await c.loadCityBundle('in/kl/ernakulam');
+  await new Promise(r => setTimeout(r, 50));
+  const calls = api.calls.length;
+  await c.loadCityBundle('in/kl/ernakulam');
+  await new Promise(r => setTimeout(r, 50));
+  assert.equal(events, 1, 'one change announced (the first load)');
+  assert.equal(api.calls.length, calls, 'a fresh saved copy is not refetched');
+});
+
 test('canonical JSON sorts keys and drops nothing else (RFC 8785 subset)', () => {
   assert.equal(canonical({ b: 1, a: [true, null, 'x'], c: { z: 'é', y: 0 } }), '{"a":[true,null,"x"],"b":1,"c":{"y":0,"z":"é"}}');
   assert.match(ulid(), /^[0-9A-HJKMNP-TV-Z]{26}$/);
