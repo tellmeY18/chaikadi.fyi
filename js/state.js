@@ -281,8 +281,10 @@ export function reduce(state, intent) {
     case 'bill.set':
       ordererOnly();
       assert(s.group.status === 'locked', 'Lock the order before entering the bill.');
-      assert(money(p.actualTotal) && ['equal', 'proportional'].includes(p.splitMode), 'Enter a valid bill and split mode.');
-      assert(s.picks.length > 0 || p.actualTotal === 0, 'Add picks before splitting a bill.');
+      // null: no separate bill (e.g. menu prices already include GST); the total
+      // is the sum of the picked items' prices.
+      assert((p.actualTotal === null || money(p.actualTotal)) && ['equal', 'proportional'].includes(p.splitMode), 'Enter a valid bill and split mode.');
+      assert(p.actualTotal === null || s.picks.length > 0 || p.actualTotal === 0, 'Add picks before splitting a bill.');
       s.round.actualTotal = p.actualTotal; s.round.splitMode = p.splitMode; s.round.payments = {};
       break;
     case 'payment.set':

@@ -319,15 +319,15 @@ class App extends Component {
         ${ordered.map(item => html`<label key=${item.id}>${item.name}<input name=${`price-${item.id}`} type="number" inputmode="decimal" min="0" max="1000000" step="0.01" placeholder="0" defaultValue=${item.price ? item.price / 100 : ''}/></label>`)}
         <button>${t('savePrices')}</button>
       </form>`}
-      ${orderer && html`<form class="stack bill-form" key=${s.round.id} onSubmit=${e => { e.preventDefault(); const f = fields(e); this.run(() => this.action('bill.set', { actualTotal: cents(f.bill), splitMode: f.split }, t('billSaved'))); }}>
+      ${orderer && html`<form class="stack bill-form" key=${s.round.id} onSubmit=${e => { e.preventDefault(); const f = fields(e); this.run(() => this.action('bill.set', { actualTotal: String(f.bill || '').trim() === '' ? null : cents(f.bill), splitMode: f.split }, t(String(f.bill || '').trim() === '' ? 'billFromMenu' : 'billSaved'))); }}>
         ${!locked && html`<p class="banner warning"><${Icon} name="lock"/>${t('lockFirst')}</p>`}
-        <label>${t('bill', c)}<input name="bill" required type="number" min="0" max="1000000" step="0.01" inputmode="decimal" defaultValue=${s.round.actualTotal === null ? '' : (s.round.actualTotal / 100).toFixed(2)} disabled=${!locked}/><small>${t('billHelp')}</small></label>
+        <label>${t('bill', c)}<input name="bill" type="number" min="0" max="1000000" step="0.01" inputmode="decimal" defaultValue=${s.round.actualTotal === null ? '' : (s.round.actualTotal / 100).toFixed(2)} disabled=${!locked}/><small>${t('billHelp')}</small></label>
         <label>${t('split')}<select name="split" defaultValue=${s.round.splitMode} disabled=${!locked}><option value="equal">${t('splitEqual')}</option><option value="proportional">${t('splitProportional')}</option></select></label>
         <button disabled=${!locked}>${t('saveBill')}</button>
       </form>`}
       ${receipt(html`<p class="r-strong">${s.group.name}</p><p class="r-gap"></p>
         ${leader(t('estimated'), money(totals.estimatedTotal, c))}
-        ${s.round.actualTotal !== null ? leader(t('actual'), money(s.round.actualTotal, c), 'r-strong') : html`<p>${t('actualNotEntered')}</p>`}
+        ${s.round.actualTotal !== null ? leader(t('actual'), money(s.round.actualTotal, c), 'r-strong') : html`<p>${t(locked ? 'billIsMenu' : 'actualNotEntered')}</p>`}
         <p class="r-rule single" aria-hidden="true"></p>
         <ul class="r-people">${totals.people.map(person => html`<li key=${person.id}>${leader(person.name, money(person.owed, c))}<span class="r-pay">${payment(person)}</span></li>`)}</ul>
         <p class="r-rule" aria-hidden="true"></p>

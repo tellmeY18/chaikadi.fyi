@@ -127,3 +127,16 @@ test('localStorage fallback survives reload and reports quota failures', async (
     assert.ok(warnings.some(m => m.includes('memory only')));
   } finally { globalThis.localStorage = previous; }
 });
+
+test('the bill is optional: empty means the menu prices are the total (GST included)', () => {
+  let s = action(populated(), 'order.lock');
+  s = action(s, 'bill.set', { actualTotal: 5000, splitMode: 'equal' });
+  assert.equal(s.round.actualTotal, 5000);
+  s = action(s, 'bill.set', { actualTotal: null, splitMode: 'proportional' });
+  assert.equal(s.round.actualTotal, null);
+  assert.equal(s.round.splitMode, 'proportional');
+  const totals = costs(s);
+  assert.equal(totals.actualTotal, totals.estimatedTotal, 'total = sum of item prices');
+  assert.equal(totals.people.reduce((n, p) => n + p.owed, 0), totals.estimatedTotal);
+  assert.throws(() => action(s, 'bill.set', { actualTotal: undefined, splitMode: 'equal' }), /valid bill/);
+});
