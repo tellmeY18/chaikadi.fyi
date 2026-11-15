@@ -1,5 +1,6 @@
 import { validCode, uid, EXTRA_STUN } from './config.js';
 import { log, isVerbose } from './netlog.js';
+import { instrument } from './icediag.js';
 
 const MAX_MESSAGE = 4 * 1024 * 1024;
 // The signaling server keeps a vanished socket's id for up to ~90 s, so a host
@@ -131,7 +132,7 @@ export class Network {
     this.attachPeer(conn);
     const timeout = setTimeout(() => {
       this.dialing = false;
-      if (!conn.open) { log('warn', 'host did not answer in 15 s'); conn.close(); this.onStatus('Host unreachable. Retrying…'); this.onUnreachable(); this.schedule(); }
+      if (!conn.open) { log('warn', 'host did not answer in 15 s'); conn.iceReport?.(); conn.close(); this.onStatus('Host unreachable. Retrying…'); this.onUnreachable(); this.schedule(); }
     }, 15000);
     conn.on('open', () => { clearTimeout(timeout); this.dialing = false; this.attempt = 0; });
     conn.on('close', () => { clearTimeout(timeout); this.dialing = false; this.schedule(); });
@@ -139,6 +140,9 @@ export class Network {
   }
   attachPeer(conn) {
     let link;
+    // Failed connections never become links: keep their diagnosis for Developer options.
+    const ice = instrument(conn, failure => { this.failures = [failure, ...(this.failures || [])].slice(0, 5); });
+    conn.iceReport = () => ice.report();
     conn.on('open', () => {
       link = this.addLink('room', message => conn.send(message), () => conn.close(), conn);
       log('info', `link open with ${conn.peer}`, { link: link.id.slice(0, 8) });
@@ -148,7 +152,7 @@ export class Network {
     conn.on('iceStateChanged', state => { log(state === 'disconnected' || state === 'failed' ? 'warn' : 'debug', `ice ${state} with ${conn.peer}`); if (link) link.ice = state;
       if (state === 'connected' && link) describeRoute(conn).then(route => { link.route = route; }).catch(() => {}); });
     const close = reason => () => { log('warn', `link ${reason} with ${conn.peer}`); if (link) this.dropLink(link); };
-    conn.on('close', close('closed')); conn.on('error', error => { log('error', `link error with ${conn.peer}`, error?.type || error?.message); close('error')(); });
+    conn.on('close', close('closed')); conn.on('error', error => { log('error', `link error with ${conn.peer}`, error?.type || error?.message); ice.report(); close('error')(); });
   }
   addLink(mode, send, close, conn = null) {
     const link = { id: uid(), mode, send, close, conn, memberId: null, lastSeen: Date.now(), opened: Date.now(), ice: 'connected' };
@@ -189,6 +193,7 @@ export class Network {
       signaling: p ? { id: p.id, open: p.open, disconnected: p.disconnected, destroyed: p.destroyed, server: this.config?.signaling?.host } : null,
       iceServers: (this.config?.iceServers ? withExtraStun(this.config.iceServers) : []).map(s => ({ urls: s.urls, ...(s.username ? { auth: 'yes' } : {}) })),
       iceTransportPolicy: this.config?.iceTransportPolicy || 'all',
+      failures: this.failures || [],
       links: [...this.links.values()].map(l => ({ id: l.id.slice(0, 8), peer: l.conn?.peer || '', member: l.memberId || '', authenticated: !!l.authenticated,
         openFor: Math.round((Date.now() - l.opened) / 1000), quietFor: Math.round((Date.now() - l.lastSeen) / 1000), ice: l.ice, route: l.route || null })) };
   }

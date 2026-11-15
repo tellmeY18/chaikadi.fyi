@@ -1,4 +1,4 @@
-import { relayServers, DEFAULT_CONFIG, PRESETS, PROTOCOL_VERSION, uid, roomCode, validCode, validateConfig, funName } from './config.js';
+import { APP_VERSION, relayServers, DEFAULT_CONFIG, PRESETS, PROTOCOL_VERSION, uid, roomCode, validCode, validateConfig, funName } from './config.js';
 import { newGroup, reduce, Persistence, migrate } from './state.js';
 import { Network, PUBLIC_INTENTS } from './p2p.js';
 import { orderableItems } from './data.js';
@@ -68,6 +68,7 @@ export class AppStore {
     if (saved?.identity && saved.config && (!saved.state || saved.state.schema === 1)) this.data = saved;
     if (!this.data.identity.name) this.data.identity.name = funName();
     setVerbose(this.data.preferences?.dev?.verbose);
+    log('info', `app start ${APP_VERSION}`, { browser: globalThis.navigator?.userAgent, webrtc: typeof globalThis.RTCPeerConnection === 'function', online: globalThis.navigator?.onLine });
     this.data.state = migrate(this.data.state);
     this.ui.blocked = !!this.data.removed;
     if (this.ui.blocked) this.ui.notice = 'You were removed from this group. Your saved history is available; leave in Settings to start again.';

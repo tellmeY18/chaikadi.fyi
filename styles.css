@@ -294,6 +294,7 @@ details[open] summary { margin-bottom: 12px; }
 .dev-table th { width: 38%; font-weight: 700; }
 .dev-links { list-style: none; padding: 0; margin: 0; font-size: .875rem; }
 .dev-links li { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.dev-failure summary { font-size: .875rem; overflow-wrap: anywhere; }
 .dev-log { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .75rem; line-height: 1.5; max-height: 360px; overflow: auto; margin: 0; padding: 10px; border: 1px solid var(--line); }
 
 /* Bottom navigation */

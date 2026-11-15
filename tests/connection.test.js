@@ -156,9 +156,25 @@ test('connection log keeps debug lines only while verbose, capped and clearable'
   assert.deepEqual(logs().map(e => e.message), ['shown']);
   setVerbose(true); log('debug', 'now shown');
   assert.equal(logs().length, 2);
-  for (let i = 0; i < 600; i++) log('info', `x${i}`);
-  assert.equal(logs().length, 500);
-  assert.match(logText(), /INFO  x599/);
+  for (let i = 0; i < 900; i++) log('info', `x${i}`);
+  assert.equal(logs().length, 800);
+  assert.match(logText(), /INFO  x899/);
   clearLogs(); setVerbose(false);
   assert.equal(logs().length, 0);
+});
+
+test('ICE candidates are parsed and failures explained in words', async () => {
+  const { parseCandidate, verdict } = await import('../js/icediag.js');
+  assert.deepEqual(parseCandidate('candidate:1 1 udp 2122260223 192.168.1.5 54321 typ host generation 0'),
+    { protocol: 'udp', address: '192.168.1.5', port: 54321, type: 'host', mdns: false, ipv6: false });
+  assert.equal(parseCandidate('candidate:2 1 UDP 2122 4b2c-aa.local 5000 typ host').mdns, true);
+  assert.equal(parseCandidate('candidate:3 1 tcp 1 1.2.3.4 9 typ srflx raddr 0.0.0.0 rport 0 tcptype active').tcpType, 'active');
+  assert.equal(parseCandidate('garbage'), null);
+  const host = { type: 'host', mdns: false }, mdns = { type: 'host', mdns: true }, srflx = { type: 'srflx' };
+  assert.match(verdict({ local: [srflx], remote: [host, srflx], pairs: [] })[0], /no local address/);
+  assert.match(verdict({ local: [mdns, srflx], remote: [host, srflx], pairs: [] })[0], /\.local name/);
+  assert.match(verdict({ local: [], remote: [], pairs: [] })[0], /no addresses at all/);
+  assert.match(verdict({ local: [], remote: [], pairs: [], policy: 'relay' })[0], /Force relay is on/);
+  assert.ok(verdict({ local: [host], remote: [host], pairs: [], errors: ['stun:x 701'] }).some(v => /STUN failed/.test(v)));
+  assert.ok(verdict({ local: [host, srflx], remote: [host, srflx], pairs: [{ state: 'failed' }] }).some(v => /none worked/.test(v)));
 });

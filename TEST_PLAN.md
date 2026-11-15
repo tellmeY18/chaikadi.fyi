@@ -252,3 +252,14 @@ Manual on https://chaikadi.fyi (develop Eatsights data):
 3. Orderer, Eatsights menu, sharing on: Finish a round with an unconfirmed or changed price →
    "Help the next group"; Not now is the main button; Send shows per-item results.
 4. Add a stall → add items → finish a round: the items appear on Eatsights.
+
+## Connection debugging (Settings → Developer options)
+
+1. Turn on **Verbose connection log** on both devices (the log then survives reloads).
+2. **Run self-test**: lists the addresses this browser offers (local, `.local` name,
+   public via STUN) and STUN/TURN errors, with a plain-words verdict.
+3. Reproduce the problem. A failed connection appears under **Failed connections** with
+   both sides' addresses, every tried pair and a likely cause.
+4. **Copy report** or **Download report** from each device and compare.
+Test it: Relay → My server `turn:127.0.0.1:9`, Force relay On, join a room: the failure
+must say "Force relay is on but the relay (TURN) server gave no address".
