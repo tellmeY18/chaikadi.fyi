@@ -1,7 +1,7 @@
 // Seed Eatsights with Chaikadi's own CC0 library data (phase 3 of
 // EATSIGHTS-INTEGRATION.md). Node 22, no dependencies.
 //
-//   node tools/eatsights-seed.mjs [--base https://develop.letsimpl.fyi] [--dry-run] <place.json>...
+//   node tools/eatsights-seed.mjs [--base URL] [--pace] [--dry-run] <place.json>...
 //
 // - Signs with a dedicated import key kept in .dev/eatsights-import-key.json
 //   (git-ignored; created on first run and registered with POST /v1/keys).
@@ -61,9 +61,14 @@ async function sign(key, object) {
   const sig = await webcrypto.subtle.sign({ name: 'Ed25519' }, key.privateKey, new TextEncoder().encode(canonical(object)));
   return { ...object, signature: b64url(sig) };
 }
-const BATCH = 100;
+// Production allows 120 signed items per key per minute: --pace sends 50 at a
+// time with a pause between batches.
+const pace = flag('--pace');
+const BATCH = pace ? 50 : 100, PAUSE_MS = pace ? 26000 : 0;
+let lastBatch = 0;
 async function post(path, body) {
   if (dryRun) return { results: (Array.isArray(body) ? body : [body]).map((_, index) => ({ index, status: 'dry-run' })) };
+  if (Array.isArray(body) && PAUSE_MS) { const wait = lastBatch + PAUSE_MS - Date.now(); if (wait > 0) await new Promise(r => setTimeout(r, wait)); lastBatch = Date.now(); }
   const response = await fetch(`${base}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
   const json = await response.json().catch(() => null);
   if (!response.ok) throw new Error(`${path}: ${response.status} ${json?.detail || json?.title || ''}`);
