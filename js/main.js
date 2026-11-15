@@ -10,7 +10,7 @@ store.boot(new URL(location.href).searchParams.get('room')?.toUpperCase() || '')
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') { store.foreground(); checkForUpdate(); }
-  else autoUpdate();
+  else { store.background(); autoUpdate(); }
 });
 window.addEventListener('online', () => { store.foreground(); checkForUpdate(); });
 window.addEventListener('pageshow', event => { if (event.persisted) store.foreground(); });

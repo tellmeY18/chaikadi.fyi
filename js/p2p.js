@@ -12,7 +12,7 @@ export class Network {
     Object.assign(this, { onMessage, onLink, onStatus, onCollision, onUnreachable });
     this.links = new Map(); this.peer = null;
     this.running = false; this.retry = null; this.connectTimer = null;
-    this.roomReady = false;
+    this.roomReady = false; this.attempt = 0;
   }
   start({ host, code, config }) {
     this.stopRoom();
@@ -38,7 +38,7 @@ export class Network {
     peer.on('open', () => {
       if (this.peer !== peer) return;
       clearTimeout(this.connectTimer);
-      this.roomReady = true;
+      this.roomReady = true; if (this.host) this.attempt = 0;
       this.onStatus(this.host ? 'Room code ready · host on this device' : 'Finding the host…');
       if (!this.host) this.connectHost();
     });
@@ -71,12 +71,16 @@ export class Network {
     this.onStatus('No connection. Retrying…');
     this.onUnreachable();
   }
+  // Retry quickly after a blip (1 s), then back off to at most 10 s, with a
+  // little jitter so a group's phones do not all redial at the same moment.
+  retryDelay() { return Math.min(10000, 1000 * 2 ** Math.min(this.attempt++, 4)) + Math.floor(Math.random() * 400); }
   schedule() {
     if (!this.running || this.retry) return;
-    this.retry = setTimeout(() => { this.retry = null; this.resume(); }, 6000);
+    this.retry = setTimeout(() => { this.retry = null; this.resume(); }, this.retryDelay());
   }
   resume() {
     if (!this.running) return;
+    clearTimeout(this.retry); this.retry = null;
     if (!this.peer || this.peer.destroyed) this.openPeer();
     else if (this.peer.disconnected) {
       try { this.peer.reconnect(); } catch { this.schedule(); }
@@ -93,7 +97,7 @@ export class Network {
       this.dialing = false;
       if (!conn.open) { conn.close(); this.onStatus('Host unreachable. Retrying…'); this.onUnreachable(); this.schedule(); }
     }, 15000);
-    conn.on('open', () => { clearTimeout(timeout); this.dialing = false; });
+    conn.on('open', () => { clearTimeout(timeout); this.dialing = false; this.attempt = 0; });
     conn.on('close', () => { clearTimeout(timeout); this.dialing = false; this.schedule(); });
     conn.on('error', () => { clearTimeout(timeout); this.dialing = false; this.schedule(); });
   }

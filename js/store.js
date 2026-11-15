@@ -3,6 +3,8 @@ import { newGroup, reduce, Persistence, migrate } from './state.js';
 import { Network, PUBLIC_INTENTS } from './p2p.js';
 import { orderableItems } from './data.js';
 
+export const LINK_TIMEOUT_MS = 45000, RESUME_GRACE_MS = 15000, OFFLINE_DELAY_MS = 8000;
+
 const copy = value => JSON.parse(JSON.stringify(value));
 const sameText = (a, b) => a.normalize('NFKC').toLowerCase() === b.normalize('NFKC').toLowerCase();
 
@@ -194,11 +196,14 @@ export class AppStore {
     this.network.send(link, { type: 'hello', senderId: this.data.identity.id, version: this.data.state?.group.version || 0,
       payload: { name: this.data.identity.name, token: this.data.identity.token, groupId: this.data.state?.group.id || null, protocol: PROTOCOL_VERSION } });
   }
-  async linkChanged(link, online) {
+  async linkChanged(link, online, settled = false) {
     if (online) {
       if (this.data.role === 'member') this.hello(link);
       return;
     }
+    // A reconnect usually follows within seconds: only show someone as
+    // offline if they are still gone after OFFLINE_DELAY_MS.
+    if (!settled) { setTimeout(() => this.serial(() => this.linkChanged(link, false, true)), OFFLINE_DELAY_MS); return; }
     if (this.data.role === 'host' && link.memberId && this.data.state?.members.some(m => m.id === link.memberId) &&
         ![...this.network.links.values()].some(l => l.memberId === link.memberId)) {
       await this.applyHost(this.intent('member.online', { id: link.memberId, online: false }));
@@ -307,14 +312,21 @@ export class AppStore {
     this.inflight = { id: intent.id, time: Date.now() };
     this.network.send(link, { type: 'intent', payload: intent, version: this.data.state.group.version, senderId: this.data.identity.id });
   }
-  tick() {
+  // Liveness: ping every 5 s; a link is dropped only after LINK_TIMEOUT_MS of
+  // silence while this app is visible. Phones throttle or freeze timers in the
+  // background, so silence then (or just after waking up) is not a dead peer:
+  // after foreground() the peer gets RESUME_GRACE_MS to answer a fresh ping.
+  tick(now = Date.now()) {
+    const grace = this.hidden || now - (this.resumedAt || 0) < RESUME_GRACE_MS;
     for (const link of [...this.network.links.values()]) {
-      if (Date.now() - link.lastSeen > 25000) { this.network.dropLink(link); continue; }
+      if (!grace && now - link.lastSeen > LINK_TIMEOUT_MS) { this.network.dropLink(link); continue; }
       this.network.send(link, { type: 'ping', payload: {}, version: 0, senderId: this.data.identity.id });
     }
     this.flush();
   }
+  background() { this.hidden = true; }
   foreground() {
+    this.hidden = false; this.resumedAt = Date.now();
     this.tick(); this.network.resume();
     for (const link of this.network.links.values()) {
       if (this.data.role === 'member') this.network.send(link, { type: 'sync', payload: {}, senderId: this.data.identity.id, version: this.data.state?.group.version || 0 });
