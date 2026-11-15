@@ -119,7 +119,7 @@ export class AppStore {
   }
   startRoom() {
     if (this.ui.blocked) return;
-    this.network.start({ host: this.data.role === 'host', code: this.data.targetCode, config: this.data.config });
+    this.network.start({ host: this.data.role === 'host', code: this.data.targetCode, config: this.data.config, fresh: !!this.freshRoom });
   }
   async collision() {
     if (this.freshRoom && (this.collisions || 0) < 8) {

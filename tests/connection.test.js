@@ -74,3 +74,68 @@ test('redial backs off from about 1 s to at most about 10 s and resets on succes
   net.attempt = 0;
   assert.ok(net.retryDelay() < 1400, 'reset after a connection opens');
 });
+
+// ---- signaling recovery with a fake PeerJS ---------------------------------
+class FakePeer {
+  static all = [];
+  constructor(id) { this.id = id; this.handlers = {}; this.open = false; this.disconnected = false; this.destroyed = false; this.connections = {}; FakePeer.all.push(this); }
+  on(type, fn) { (this.handlers[type] ||= []).push(fn); }
+  fire(type, arg) { for (const fn of this.handlers[type] || []) fn(arg); }
+  reconnect() { this.disconnected = false; /* hangs: no event, like peerjs#1289 */ }
+  destroy() { this.destroyed = true; }
+}
+function network(extra = {}) {
+  FakePeer.all = [];
+  globalThis.window = { Peer: FakePeer };
+  const calls = { collision: 0 };
+  const net = new Network({ onMessage() {}, onLink() {}, onStatus() {}, onUnreachable() {}, onCollision: () => calls.collision++, ...extra });
+  return { net, calls };
+}
+const config = { signaling: { host: 'x', port: 443, path: '/', secure: true, key: 'k' }, iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+test('a host whose own code is still held by the server waits instead of switching codes', t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1_800_000_000_000 });
+  const { net, calls } = network();
+  net.start({ host: true, code: 'ABCD', config, fresh: false });
+  FakePeer.all[0].fire('error', { type: 'unavailable-id' });
+  assert.equal(calls.collision, 0, 'no new code, no error notice');
+  t.mock.timers.tick(1500);
+  assert.equal(FakePeer.all.length, 2, 'tries the same code again');
+  assert.equal(FakePeer.all[1].id, 'chaikadi-ABCD');
+  t.mock.timers.tick(121000);
+  if (!net.peer) net.resume();
+  net.peer.fire('error', { type: 'unavailable-id' });
+  assert.equal(calls.collision, 1, 'still taken after ~2 minutes: report it');
+  net.stop();
+});
+
+test('a brand-new room code that is taken picks another at once', () => {
+  const { net, calls } = network();
+  net.start({ host: true, code: 'ABCD', config, fresh: true });
+  FakePeer.all[0].fire('error', { type: 'unavailable-id' });
+  assert.equal(calls.collision, 1);
+});
+
+test('a hung signaling reconnect is replaced without closing live data links', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { net } = network();
+  net.start({ host: false, code: 'ABCD', config });
+  const first = FakePeer.all[0];
+  first.connect = () => ({ on() {}, open: false, close() {} });
+  first.open = true; first.fire('open');
+  first.connections = { 'chaikadi-ABCD': [{ open: true }] };
+  first.open = false; first.disconnected = true; first.fire('disconnected');
+  net.resume();
+  t.mock.timers.tick(10000);
+  assert.equal(FakePeer.all.length, 2, 'a fresh signaling peer is made');
+  assert.equal(first.destroyed, false, 'the old peer keeps its live data connection');
+  net.stop();
+  assert.equal(first.destroyed, true, 'cleaned up when the room stops');
+});
+
+test('extra public STUN servers are added once', async () => {
+  const { withExtraStun } = await import('../js/p2p.js');
+  const out = withExtraStun([{ urls: 'stun:stun.cloudflare.com:3478' }]);
+  assert.equal(out.filter(s => s.urls === 'stun:stun.cloudflare.com:3478').length, 1);
+  assert.ok(out.some(s => s.urls === 'stun:stun1.l.google.com:19302'));
+});

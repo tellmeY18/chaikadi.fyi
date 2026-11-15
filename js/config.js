@@ -5,9 +5,10 @@ export const DEFAULT_CONFIG = {
   signaling: { host: '0.peerjs.com', port: 443, path: '/', secure: true, key: 'peerjs' },
   iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:global.stun.twilio.com:3478' }],
 };
+export const EXTRA_STUN = ['stun:stun.cloudflare.com:3478', 'stun:stun1.l.google.com:19302'];
 export const ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
 // Shown in Settings. Bump with the service-worker cache version on release.
-export const APP_VERSION = '2026.11.15-eatsight-4';
+export const APP_VERSION = '2026.11.15-eatsight-5';
 // Multi-menu writes require the same protocol on every peer. Storage remains
 // schema 1 with an additive migration; old app versions must not drop menu IDs.
 // v3: menus can record the library place they were imported from.
