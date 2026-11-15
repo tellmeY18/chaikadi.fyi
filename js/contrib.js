@@ -80,10 +80,11 @@ export function createContributor({ baseUrl = EATSIGHTS_BASE_URL, storage = idbS
   }
   async function register() {
     const k = await key();
-    if (k.registered) return k;
+    // Registered per Eatsights server: a key registered on develop is unknown to production.
+    if (k.registered === base) return k;
     const proof = await sign({ type: 'key_registration', algorithm: 'ed25519', public_key: k.publicKey, created_at: now().toISOString() });
     await post('/v1/keys', proof);
-    const saved = { ...k, registered: true };
+    const saved = { ...k, registered: base };
     await storage.set(KEY, saved);
     keyPromise = Promise.resolve(saved);
     return saved;
@@ -131,7 +132,7 @@ export function createContributor({ baseUrl = EATSIGHTS_BASE_URL, storage = idbS
   }
   async function discardPending() { await storage.set(OUTBOX, []); }
   async function reset() { await storage.set(KEY, null); await storage.set(OUTBOX, []); keyPromise = null; }
-  async function info() { const k = await storage.get(KEY); return k?.keyId ? { keyId: k.keyId, createdAt: k.createdAt, registered: k.registered } : null; }
+  async function info() { const k = await storage.get(KEY); return k?.keyId ? { keyId: k.keyId, createdAt: k.createdAt, registered: k.registered === base } : null; }
 
   // Entity submissions (proposal 0001): [{ entity_type, entity }] -> per-item results.
   async function createEntities(list) {

@@ -246,7 +246,7 @@ three checks with a per-item rejection; items of a stall without a menu created 
 after three skips with nothing sent.
 
 
-Manual on https://chaikadi.fyi (develop Eatsights data):
+Manual on https://chaikadi.fyi (production Eatsights):
 1. Library: chips, price marks, source line; Kozhikode empty state; offline banners.
 2. Settings: Contributions On (default)/Off, what is shared, reset key; Developer options.
 3. Orderer, Eatsights menu, sharing on: Finish a round with an unconfirmed or changed price →

@@ -246,3 +246,11 @@ wait and rating sheets were replaced by this sheet.
   path are removed (D1, D4, D5 settled). Old caches are deleted on update.
 - Menus already imported from the old library stay in groups as ordinary menus.
 - Before real users: move `EATSIGHTS_BASE_URL` to production Eatsights (its M6).
+
+## 13. Production (2026-11-16)
+
+- `EATSIGHTS_BASE_URL` is `https://eatsights.letsimpl.fyi` (phase 6). Develop stays at
+  `https://develop.letsimpl.fyi` for testing.
+- Device keys register once per Eatsights server, so keys first registered on develop
+  register again on production before the first contribution.
+- Production starts empty; library data is added by people or by `tools/eatsights-seed.mjs --base`.

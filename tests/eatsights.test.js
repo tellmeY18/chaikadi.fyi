@@ -140,6 +140,19 @@ test('key ids follow proposal 0001 and signatures verify over the canonical byte
   assert.equal(posted[0][1].type, 'key_registration');
 });
 
+test('a key registered on one Eatsights server registers again on another', async () => {
+  const storage = memoryStorage(), posted = [];
+  const fetchImpl = async (url, init) => { posted.push(url); const body = JSON.parse(init.body);
+    return { ok: true, status: 200, json: async () => (url.endsWith('/v1/keys') ? {} : { results: body.map((_, index) => ({ index, status: 'accepted' })) }) }; };
+  const dev = createContributor({ storage, fetchImpl, online: () => true, baseUrl: 'https://develop.test' });
+  await dev.register(); await dev.register();
+  const prod = createContributor({ storage, fetchImpl, online: () => true, baseUrl: 'https://prod.test' });
+  await prod.register();
+  assert.deepEqual(posted, ['https://develop.test/v1/keys', 'https://prod.test/v1/keys']);
+  assert.equal((await prod.info()).registered, true);
+  assert.equal((await dev.info()).registered, false, 'the saved key now belongs to production');
+});
+
 test('offline submissions wait in the outbox and flush later', async () => {
   let up = false;
   const fetchImpl = async (url, init) => {

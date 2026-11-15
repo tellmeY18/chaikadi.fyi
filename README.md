@@ -239,7 +239,7 @@ Groups can **Pick from library** on the Menu tab: choose a city (remembered),
 search a stall by name, preview its menu with freshness marks, and **Use this
 menu**. Menus come from [Eatsights](https://github.com/tellmeY18/eatsights), the
 open (CC0) food data API, at `EATSIGHTS_BASE_URL` in `js/config.js`
-(currently `https://develop.letsimpl.fyi`). Only its public API is used.
+(production: `https://eatsights.letsimpl.fyi`). Only its public API is used.
 
 - **Read:** `js/eatsights.js` lists a city's stalls (`GET /v1/places?city=…`),
   loads each menu (`GET /v1/places/{id}/menu`, ETag/304) and maps it to the

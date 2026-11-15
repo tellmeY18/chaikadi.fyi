@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 const { chromium, webkit } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const browser = await (process.env.BROWSER === 'webkit' ? webkit : chromium).launch(process.env.CHROME ? { executablePath: process.env.CHROME } : {});
 const base = process.env.TEST_URL || 'http://127.0.0.1:8090';
-const ES = 'https://develop.letsimpl.fyi';
+const ES = 'https://eatsights.letsimpl.fyi';
 const day = new Date().toISOString();
 
 // ---- fake Eatsights ---------------------------------------------------------
