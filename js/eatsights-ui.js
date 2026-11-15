@@ -132,9 +132,9 @@ export class EsRoundSheet extends Component {
     }
     const setAnswer = (i, a) => { const next = [...answers]; next[i] = a; this.setState({ answers: next }); };
     const count = this.entries().length;
-    return html`<${Sheet} title=${t('esRoundTitle')} onClose=${() => { onOutcome('skipped'); onClose(); }}>
+    return html`<${Sheet} title=${t('esRoundTitle')} className="round-sheet" onClose=${() => { onOutcome('skipped'); onClose(); }}>
       <p>${t('esRoundIntro')}</p>
-      ${plan.prices.length > 0 && html`<h3>${t('esPrices')}</h3><ul class="change-list">${plan.prices.map((p, i) => html`<li key=${p.name} data-kind=${p.kind}>
+      ${plan.prices.length > 0 && html`<h3 class="round-heading">${t('esPrices')}</h3><ul class="change-list">${plan.prices.map((p, i) => html`<li key=${p.name} data-kind=${p.kind}>
         ${p.kind === 'changed' || p.kind === 'new'
           ? html`<label class="check-row"><input type="checkbox" checked=${answers[i] !== 'skip'} onChange=${e => setAnswer(i, e.currentTarget.checked ? 'send' : 'skip')}/>
               <div class="change-copy"><strong>${p.name}</strong>${p.kind === 'changed' ? html`<span class="change-diff"><s>${money(p.before, currency)}</s><${Icon} name="arrow" size=${16}/><strong>${money(p.price, currency)}</strong></span>` : html`<span class="change-diff"><strong>${money(p.price, currency)}</strong></span><small>${t('esKindNew')}</small>`}</div></label>`
@@ -143,11 +143,11 @@ export class EsRoundSheet extends Component {
               ${answers[i] === 'changed' && html`<label>${t('esNewPrice', p.name)}<input type="number" inputmode="decimal" min="0" step="0.01" autofocus
                 onInput=${e => { const v = e.currentTarget.value; this.setState({ newPrices: { ...newPrices, [i]: /^\d+(\.\d{1,2})?$/.test(v) ? Math.round(Number(v) * 100) : undefined } }); }}/></label>`}</div>`}
       </li>`)}</ul>`}
-      ${plan.soldOut.length > 0 && html`<h3>${t('esSoldOut')}</h3><ul class="change-list">${plan.soldOut.map((name, i) => html`<li key=${name}><label class="check-row"><input type="checkbox" checked=${sold[i]}
+      ${plan.soldOut.length > 0 && html`<h3 class="round-heading">${t('esSoldOut')}</h3><ul class="change-list">${plan.soldOut.map((name, i) => html`<li key=${name}><label class="check-row"><input type="checkbox" checked=${sold[i]}
         onChange=${e => { const next = [...sold]; next[i] = e.currentTarget.checked; this.setState({ sold: next }); }}/><strong>${name}</strong></label></li>`)}</ul>`}
-      ${plan.wait && html`<fieldset><legend>${t('esWaitTitle')}</legend><div class="choice-row">${t('esWaits').map(([label, s]) => html`<button type="button" aria-pressed=${wait === s} onClick=${() => this.setState({ wait: wait === s ? null : s })}>${label}</button>`)}</div></fieldset>`}
-      ${plan.rate.length > 0 && html`<h3>${t('esRateTitle')}</h3>${plan.rate.map(name => html`<fieldset class="rate-row" key=${name}><legend>${name}</legend><div class="choice-row five">${[1, 2, 3, 4, 5].map(n => html`<button type="button" aria-label=${t('esRate', name, n)} aria-pressed=${scores[name] === n}
-        onClick=${() => this.setState({ scores: { ...scores, [name]: scores[name] === n ? 0 : n } })}>${n}</button>`)}</div></fieldset>`)}`}
+      ${plan.wait && html`<fieldset class="round-wait"><legend class="round-heading">${t('esWaitTitle')}</legend><div class="choice-row four">${t('esWaits').map(([label, s]) => html`<button type="button" aria-pressed=${wait === s} onClick=${() => this.setState({ wait: wait === s ? null : s })}>${label}</button>`)}</div></fieldset>`}
+      ${plan.rate.length > 0 && html`<h3 class="round-heading">${t('esRateTitle')}</h3><ul class="rate-list">${plan.rate.map(name => html`<li key=${name} class="rate-row"><span class="rate-name">${name}</span><div class="choice-row five">${[1, 2, 3, 4, 5].map(n => html`<button type="button" aria-label=${t('esRate', name, n)} aria-pressed=${scores[name] === n}
+        onClick=${() => this.setState({ scores: { ...scores, [name]: scores[name] === n ? 0 : n } })}>${n}</button>`)}</div></li>`)}</ul>`}
       <div class="sheet-actions"><button class="primary" onClick=${() => { onOutcome('skipped'); onClose(); }}>${t('notNow')}</button>
         <button class="outbound" disabled=${!count || busy} onClick=${() => this.send()}><${Icon} name="share"/>${busy ? t('esSending') : t('esSendN', count)}</button></div><//>`;
   }
