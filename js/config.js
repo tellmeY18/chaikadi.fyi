@@ -5,10 +5,27 @@ export const DEFAULT_CONFIG = {
   signaling: { host: '0.peerjs.com', port: 443, path: '/', secure: true, key: 'peerjs' },
   iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:global.stun.twilio.com:3478' }],
 };
+// Free hosted relays (TURN), used only when phones cannot reach each other
+// directly (some mobile networks). Public, best-effort credentials: Metered's
+// Open Relay. They may stop working at any time; Settings → Developer options
+// can switch the relay off or use your own TURN server instead.
+export const FREE_RELAYS = [
+  { urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp', 'turns:openrelay.metered.ca:443?transport=tcp'],
+    username: 'openrelayproject', credential: 'openrelayproject' },
+];
+// Relay choice from Developer options -> ICE servers to add.
+export function relayServers(dev = {}) {
+  if (dev.relay === 'off') return [];
+  if (dev.relay === 'custom') {
+    const urls = String(dev.custom?.urls || '').split(/[\s,]+/).filter(u => /^turns?:[^\s]+$/.test(u));
+    return urls.length ? [{ urls, username: String(dev.custom?.username || ''), credential: String(dev.custom?.credential || '') }] : [];
+  }
+  return FREE_RELAYS;
+}
 export const EXTRA_STUN = ['stun:stun.cloudflare.com:3478', 'stun:stun1.l.google.com:19302'];
 export const ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
 // Shown in Settings. Bump with the service-worker cache version on release.
-export const APP_VERSION = '2026.11.15-eatsight-5';
+export const APP_VERSION = '2026.11.15-eatsight-6';
 // Multi-menu writes require the same protocol on every peer. Storage remains
 // schema 1 with an additive migration; old app versions must not drop menu IDs.
 // v3: menus can record the library place they were imported from.

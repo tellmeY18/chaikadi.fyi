@@ -1,7 +1,8 @@
-import { DEFAULT_CONFIG, PRESETS, PROTOCOL_VERSION, uid, roomCode, validCode, validateConfig, validateDataBaseUrl, funName } from './config.js';
+import { relayServers, DEFAULT_CONFIG, PRESETS, PROTOCOL_VERSION, uid, roomCode, validCode, validateConfig, validateDataBaseUrl, funName } from './config.js';
 import { newGroup, reduce, Persistence, migrate } from './state.js';
 import { Network, PUBLIC_INTENTS } from './p2p.js';
 import { orderableItems } from './data.js';
+import { log, setVerbose } from './netlog.js';
 
 export const LINK_TIMEOUT_MS = 45000, RESUME_GRACE_MS = 15000, OFFLINE_DELAY_MS = 8000;
 
@@ -50,12 +51,23 @@ export class AppStore {
     this.data.preferences = { theme: 'auto', installDismissed: false, ...this.data.preferences, ...patch };
     await this.persist(); this.emit();
   }
+  // Developer options: verbose logging, relay choice, force relay. Changing how
+  // to connect restarts the room connection with the new settings.
+  async devOptions(patch) {
+    const before = this.data.preferences?.dev || {};
+    const dev = { ...before, ...patch };
+    setVerbose(dev.verbose);
+    await this.preferences({ dev });
+    const reconnect = ['relay', 'custom', 'forceRelay'].some(k => JSON.stringify(before[k]) !== JSON.stringify(dev[k]));
+    if (reconnect && this.data.role && this.data.targetCode && !this.ui.blocked) { log('info', 'reconnecting with new connection settings'); this.startRoom(); }
+  }
   async persist() { await this.db.save(this.data); }
   async boot(code = '') {
     await this.db.open();
     const saved = await this.db.load();
     if (saved?.identity && saved.config && (!saved.state || saved.state.schema === 1)) this.data = saved;
     if (!this.data.identity.name) this.data.identity.name = funName();
+    setVerbose(this.data.preferences?.dev?.verbose);
     this.data.state = migrate(this.data.state);
     this.ui.blocked = !!this.data.removed;
     if (this.ui.blocked) this.ui.notice = 'You were removed from this group. Your saved history is available; leave in Settings to start again.';
@@ -119,7 +131,9 @@ export class AppStore {
   }
   startRoom() {
     if (this.ui.blocked) return;
-    this.network.start({ host: this.data.role === 'host', code: this.data.targetCode, config: this.data.config, fresh: !!this.freshRoom });
+    const dev = this.data.preferences?.dev || {};
+    const config = { ...this.data.config, iceServers: [...(this.data.config.iceServers || []), ...relayServers(dev)], iceTransportPolicy: dev.forceRelay ? 'relay' : 'all' };
+    this.network.start({ host: this.data.role === 'host', code: this.data.targetCode, config, fresh: !!this.freshRoom });
   }
   async collision() {
     if (this.freshRoom && (this.collisions || 0) < 8) {
@@ -204,6 +218,7 @@ export class AppStore {
     // A reconnect usually follows within seconds: only show someone as
     // offline if they are still gone after OFFLINE_DELAY_MS.
     if (!settled) { setTimeout(() => this.serial(() => this.linkChanged(link, false, true)), OFFLINE_DELAY_MS); return; }
+    log('debug', 'link still gone after the offline delay', { member: link.memberId?.slice(0, 8) });
     if (this.data.role === 'host' && link.memberId && this.data.state?.members.some(m => m.id === link.memberId) &&
         ![...this.network.links.values()].some(l => l.memberId === link.memberId)) {
       await this.applyHost(this.intent('member.online', { id: link.memberId, online: false }));
@@ -294,7 +309,7 @@ export class AppStore {
       this.data.targetCode = incoming.group.roomCode;
       this.network.code = incoming.group.roomCode;
       this.data.outbox = this.data.outbox.filter(i => i.id !== msg.payload.ack && !incoming.receipts.includes(i.id));
-      this.ui.hostOnline = true; this.ui.unreachable = false; this.ui.status = 'Connected to host';
+      this.ui.hostOnline = true; this.ui.unreachable = false; this.ui.status = 'Connected to host'; log('info', 'synced with host', { version: incoming.group.version });
       this.syncName(); await this.persist();
       if (firstSync) this.ui.tab = incoming.menu.length ? 'picks' : 'menu'; // joiners land where the action is
       this.emit();
@@ -319,14 +334,14 @@ export class AppStore {
   tick(now = Date.now()) {
     const grace = this.hidden || now - (this.resumedAt || 0) < RESUME_GRACE_MS;
     for (const link of [...this.network.links.values()]) {
-      if (!grace && now - link.lastSeen > LINK_TIMEOUT_MS) { this.network.dropLink(link); continue; }
+      if (!grace && now - link.lastSeen > LINK_TIMEOUT_MS) { log('warn', `no reply for ${Math.round((now - link.lastSeen) / 1000)} s, dropping link`); this.network.dropLink(link); continue; }
       this.network.send(link, { type: 'ping', payload: {}, version: 0, senderId: this.data.identity.id });
     }
     this.flush();
   }
-  background() { this.hidden = true; }
+  background() { this.hidden = true; log('debug', 'app hidden'); }
   foreground() {
-    this.hidden = false; this.resumedAt = Date.now();
+    this.hidden = false; this.resumedAt = Date.now(); log('debug', 'app visible');
     this.tick(); this.network.resume();
     for (const link of this.network.links.values()) {
       if (this.data.role === 'member') this.network.send(link, { type: 'sync', payload: {}, senderId: this.data.identity.id, version: this.data.state?.group.version || 0 });

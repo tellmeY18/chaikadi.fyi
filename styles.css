@@ -287,6 +287,15 @@ details[open] summary { margin-bottom: 12px; }
 .dup-row { padding: 12px 0; gap: 8px; }
 .item-list li.sold-out .leader > span:first-child { text-decoration: line-through; }
 
+/* Developer options */
+.dev-details { border-top: 1px solid var(--line); padding-top: 4px; }
+.dev-table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+.dev-table th, .dev-table td { text-align: left; vertical-align: top; padding: 6px 8px 6px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.dev-table th { width: 38%; font-weight: 700; }
+.dev-links { list-style: none; padding: 0; margin: 0; font-size: .875rem; }
+.dev-links li { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.dev-log { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .75rem; line-height: 1.5; max-height: 360px; overflow: auto; margin: 0; padding: 10px; border: 1px solid var(--line); }
+
 /* Bottom navigation */
 .bottom-nav { position: fixed; z-index: 5; bottom: 0; left: 50%; transform: translateX(-50%); display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); width: min(100%,560px); padding: 0 0 env(safe-area-inset-bottom); border-top: var(--rule); background: var(--page); }
 .bottom-nav > button { display: flex; flex-direction: column; min-height: 72px; gap: 4px; padding: 8px 0; border: 0; border-top: 4px solid transparent; font-size: .875rem; font-weight: 400; line-height: 1.3; }

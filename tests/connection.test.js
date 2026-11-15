@@ -139,3 +139,26 @@ test('extra public STUN servers are added once', async () => {
   assert.equal(out.filter(s => s.urls === 'stun:stun.cloudflare.com:3478').length, 1);
   assert.ok(out.some(s => s.urls === 'stun:stun1.l.google.com:19302'));
 });
+
+test('relay choice: free relay by default, own server, or off', async () => {
+  const { relayServers, FREE_RELAYS } = await import('../js/config.js');
+  assert.equal(relayServers(), FREE_RELAYS);
+  assert.deepEqual(relayServers({ relay: 'off' }), []);
+  assert.deepEqual(relayServers({ relay: 'custom', custom: { urls: 'turn:a.example:3478, https://bad , turns:a.example:443?transport=tcp', username: 'u', credential: 'p' } }),
+    [{ urls: ['turn:a.example:3478', 'turns:a.example:443?transport=tcp'], username: 'u', credential: 'p' }]);
+  assert.deepEqual(relayServers({ relay: 'custom', custom: { urls: '' } }), []);
+});
+
+test('connection log keeps debug lines only while verbose, capped and clearable', async () => {
+  const { log, logs, clearLogs, setVerbose, logText } = await import('../js/netlog.js');
+  clearLogs(); setVerbose(false);
+  log('debug', 'hidden'); log('info', 'shown', { a: 1 });
+  assert.deepEqual(logs().map(e => e.message), ['shown']);
+  setVerbose(true); log('debug', 'now shown');
+  assert.equal(logs().length, 2);
+  for (let i = 0; i < 600; i++) log('info', `x${i}`);
+  assert.equal(logs().length, 500);
+  assert.match(logText(), /INFO  x599/);
+  clearLogs(); setVerbose(false);
+  assert.equal(logs().length, 0);
+});

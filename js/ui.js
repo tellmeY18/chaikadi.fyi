@@ -7,6 +7,7 @@ import { LibrarySheet } from './library-ui.js';
 import { EsRoundSheet, EsItemSheet, ContribSettings, ResetKeySheet, AddStallSheet, sharingOn, esSource, roundFacts } from './eatsights-ui.js';
 import { planRound, afterSheet, today } from './prompts.js';
 import { contrib } from './contrib.js';
+import { DevOptions } from './dev-ui.js';
 import { drawQR, scanQR } from './qr.js';
 import { t, money } from './strings.js';
 import { Icon, Sheet, Modal, CodeInput, Empty } from './components.js';
@@ -366,6 +367,7 @@ class App extends Component {
       ${s && html`<button class="danger" onClick=${() => this.confirm(t('leaveConfirm'), t('leave'), () => store.leave())}><${Icon} name="alert"/>${t('leave')}</button>`}
       ${v.updateReady ? html`<button class="primary" disabled=${v.updating} onClick=${() => store.applyUpdate?.()}>${t(v.updating ? 'updating' : 'updateNow')}</button>`
         : html`<button class="quiet" disabled=${this.state.checking} onClick=${async () => { this.setState({ checking: true }); const r = await (store.checkForUpdate?.() ?? 'current'); this.setState({ checking: false }); store.toast(t(r === 'ready' ? 'updateFound' : r === 'offline' ? 'updateOffline' : 'upToDate')); }}>${t(this.state.checking ? 'checking' : 'checkUpdates')}</button>`}
+      <details class="dev-details" onToggle=${e => this.setState({ devOpen: e.currentTarget.open })}><summary>${t('devOptions')}</summary>${this.state.devOpen && html`<${DevOptions} view=${v} store=${store}/>`}</details>
       <p class="fineprint">${t('version', APP_VERSION)} · <a href="https://github.com/tellmeY18/chaikadi.fyi" target="_blank" rel="noopener">${t('source')}</a> · <a href=${`${DATA_REPO_URL}#readme`} target="_blank" rel="noopener noreferrer">${t('libraryReadme')}</a></p>
       </div>
     </section>`;
