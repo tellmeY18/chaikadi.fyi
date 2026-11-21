@@ -16,14 +16,15 @@ export function relayServers(dev = {}) {
 export const EXTRA_STUN = ['stun:stun.cloudflare.com:3478', 'stun:stun1.l.google.com:19302'];
 export const ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
 // Shown in Settings. Bump with the service-worker cache version on release.
-export const APP_VERSION = '2026.11.21-3';
+export const APP_VERSION = '2026.11.21-4';
 // Multi-menu writes require the same protocol on every peer. Storage remains
 // schema 1 with an additive migration; old app versions must not drop menu IDs.
 // v3: menus can record the library place they were imported from.
 // v4: library places have their own ids (not only OSM refs) and 7 categories.
 // v5: items carry `popularity`; host/orderer can set prices while locked.
 // v6: members can share a UPI ID (member.upi) so payers can pay the orderer.
-export const PROTOCOL_VERSION = 6;
+// v7: members propose a UPI ID by scanning someone's UPI QR; the owner approves (upi.propose, upi.decide).
+export const PROTOCOL_VERSION = 7;
 // A session idle for longer than this is archived to History on the next open.
 export const SESSION_TTL_MS = 60 * 60 * 1000;
 

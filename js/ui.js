@@ -10,7 +10,7 @@ import { DevOptions } from './dev-ui.js';
 import { drawQR, scanQR } from './qr.js';
 import { t, money } from './strings.js';
 import { Icon, Sheet, Modal, CodeInput, Empty } from './components.js';
-import { upiLinks, upiCurrency } from './upi.js';
+import { upiLinks, upiCurrency, parseUpiQr } from './upi.js';
 import { currentPlatform, installOffer } from './install.js';
 
 const html = htm.bind(h);
@@ -126,7 +126,10 @@ class App extends Component {
     this.unsubscribe = this.props.store.subscribe(view => {
       const previous = this.state.view.state;
       const lockedNow = previous?.group.status === 'open' && view.state?.group.status === 'locked' && previous.round.id === view.state.round.id && view.state.group.ordererId === view.identity.id;
-      this.setState({ view, ...(lockedNow ? { sheet: { kind: 'locked' } } : {}) });
+      const key = x => x ? `${x.upi}:${x.byId}` : '';
+      const mine = view.state?.upiProposals?.find(x => x.forId === view.identity.id);
+      const fresh = mine && key(mine) !== key(previous?.upiProposals?.find(x => x.forId === view.identity.id));
+      this.setState({ view, ...(lockedNow ? { sheet: { kind: 'locked' } } : fresh && !this.state.sheet ? { sheet: { kind: 'upiApprove' } } : {}) });
       this.applyTheme(view.preferences.theme);
     });
     // Contributions saved while offline go out once the device is online.
@@ -182,11 +185,6 @@ class App extends Component {
   nameField(v) {
     return html`<label>${t('yourName')}<span class="with-dice"><input key=${v.identity.name} name="name" required maxlength="30" defaultValue=${v.identity.name} autocomplete="nickname"/><button type="button" class="icon-button" aria-label=${t('randomName')} onClick=${() => this.props.store.rerollName()}><${Icon} name="dice"/></button></span></label>`;
   }
-  upiField(v) {
-    return html`<label><span>${t('upiId')} <span class="muted">(${t('optional')})</span></span><input key=${v.profile.upi} name="upi" inputmode="email" autocapitalize="none" autocomplete="off" spellcheck=${false} maxlength="100" placeholder=${t('upiPlaceholder')} defaultValue=${v.profile.upi}/><small>${t('upiHome')}</small></label>`;
-  }
-  // Name and UPI ID are remembered on this device, so asking once is enough.
-  rememberProfile(f) { return this.props.store.saveProfile({ name: f.name, upi: f.upi }); }
   home(v) {
     const store = this.props.store;
     const join = this.state.homeMode === 'join' || !!v.targetCode || v.role === 'member';
@@ -194,24 +192,22 @@ class App extends Component {
       this.code = code;
       if (validCode(code) && code !== this.lastAutoCode) {
         this.lastAutoCode = code;
-        this.run(async () => { const el = this.homeForm?.elements; await this.rememberProfile({ name: el?.name?.value || v.identity.name, upi: el?.upi?.value ?? v.profile.upi }); await store.join(code, el?.name?.value || v.identity.name); });
+        this.run(() => store.join(code, this.homeForm?.elements.name?.value || v.identity.name));
       }
     };
     if (join) return html`<section class="home">
       <button type="button" class="back" onClick=${() => { this.run(() => store.resetConnection()); this.setState({ homeMode: 'create' }); }}><${Icon} name="back"/>${t('back')}</button>
       ${heading(t('join'))}
-      <form ref=${el => this.homeForm = el} class="stack" onSubmit=${e => { e.preventDefault(); const f = fields(e); this.run(async () => { await this.rememberProfile(f); await store.join(this.code || v.targetCode, f.name); }); }}>
+      <form ref=${el => this.homeForm = el} class="stack" onSubmit=${e => { e.preventDefault(); this.run(() => store.join(this.code || v.targetCode, fields(e).name)); }}>
         <${CodeInput} value=${v.targetCode} onInput=${joinNow}/>
         ${v.role === 'member' && v.targetCode && html`<p role="status">${t('joining', v.targetCode)}</p>`}
         ${this.nameField(v)}
-        ${this.upiField(v)}
         <button class="primary">${t('joinAction')}</button>
         <button type="button" class="outbound" onClick=${() => this.open({ kind: 'roomScan' })}><${Icon} name="qr"/>${t('scanQR')}</button>
       </form></section>`;
     return html`<section class="home">${heading(t('tagline'))}
-      <form class="stack" onSubmit=${e => { e.preventDefault(); const f = fields(e); this.run(async () => { await this.rememberProfile(f); await store.create(funGroup(), f.name); }); }}>
+      <form class="stack" onSubmit=${e => { e.preventDefault(); const f = fields(e); this.run(() => store.create(funGroup(), f.name)); }}>
         ${this.nameField(v)}
-        ${this.upiField(v)}
         <button class="primary">${t('create')}</button>
         <button type="button" onClick=${() => this.setState({ homeMode: 'join' })}>${t('join')}</button>
       </form>
@@ -227,6 +223,21 @@ class App extends Component {
       ${offer === 'browser' && html`<p>${t('installBrowser')}</p>`}
       <div class="actions">${offer === 'prompt' && html`<button onClick=${() => this.run(() => store.promptInstall())}><${Icon} name="install"/>${t('installAction')}</button>`}
       ${!force && html`<button class="quiet" onClick=${() => this.run(() => store.snoozeInstall())}>${t('installNotNow')}</button>`}</div></div></aside>`;
+  }
+  // Payer side: the orderer has no UPI ID yet. Scan their UPI QR; they approve it.
+  upiScanCard(v) {
+    const s = v.state, c = s.group.currency, payee = s.members.find(m => m.id === s.group.ordererId);
+    if (!payee || payee.id === v.identity.id || payee.upi || !upiCurrency(c)) return null;
+    const waiting = s.upiProposals?.some(x => x.forId === payee.id);
+    return html`<aside class="banner info scan-upi" aria-labelledby="scan-upi-title"><${Icon} name="rupee"/><div><h3 id="scan-upi-title">${t('upiScanTitle', payee.name)}</h3>
+      <p>${t(waiting ? 'upiScanWaiting' : 'upiScanBody', payee.name)}</p>
+      <div class="actions"><button class="outbound" onClick=${() => this.open({ kind: 'upiScan', payee: { id: payee.id, name: payee.name } })}><${Icon} name="qr"/>${t(waiting ? 'upiScanAgain' : 'upiScanAction')}</button></div></div></aside>`;
+  }
+  // Payee side: someone scanned your UPI QR. Nothing changes until you approve.
+  upiApproveBanner(v) {
+    const s = v.state, proposal = s?.upiProposals?.find(x => x.forId === v.identity.id);
+    if (!proposal) return null;
+    return html`<div class="banner warning" role="status"><${Icon} name="alert"/><span>${t('upiApproveBanner', nameOf(s, proposal.byId), proposal.upi)}</span><button class="quiet" onClick=${() => this.open({ kind: 'upiApprove' })}>${t('upiReview')}</button></div>`;
   }
   // UPI: open the payer's own UPI app with payee, amount and note filled in.
   payAction(v, { payee, amount, currency, group, estimate }) {
@@ -327,6 +338,7 @@ class App extends Component {
     const s = v.state, totals = costs(s), orderer = s.group.ordererId === v.identity.id, c = s.group.currency;
     const lines = activeItems(s).map(item => [item, s.picks.filter(p => p.itemId === item.id).reduce((n, p) => n + p.qty, 0)]).filter(([, qty]) => qty);
     return html`<section>${heading(t('order'))}
+      ${this.upiScanCard(v)}
       ${receipt(html`<p class="r-strong">${s.group.name}</p><p>${activeMenu(s)?.name || ''}</p>${s.group.status === 'locked' && html`<p class="r-strong">${t('locked')}</p>`}<p class="r-gap"></p>
         ${!lines.length && html`<p>${t('noPicks')}</p>`}
         ${lines.map(([item, qty]) => html`${leader(`${item.name} x ${qty}`, money(qty * item.price, c))}${itemNotes(s, item.id).map(n => html`<p class="r-item-note">- ${n}</p>`)}`)}
@@ -356,6 +368,7 @@ class App extends Component {
       return paid ? html`<span class="stamp">${t('paid')}</span>` : '';
     };
     return html`<section>${heading(t('costs'))}
+      ${this.upiScanCard(v)}
       ${orderer && locked && upiCurrency(c) && !ordererMember?.upi && html`<div class="banner info"><${Icon} name="rupee"/><span>${t('payAddOwn')}</span><button class="quiet" onClick=${() => this.go('settings')}>${t('payAddOwnAction')}</button></div>`}
       ${pricesOpen && html`<form class="stack price-form" key=${`prices-${s.round.id}-${s.group.version}`} onSubmit=${e => { e.preventDefault(); const f = fields(e); this.run(() => this.action('item.price', { prices: ordered.map(item => ({ id: item.id, price: cents(f[`price-${item.id}`]) })) }, t('pricesSaved'))); }}>
         <h2>${t('itemPrices')}</h2><p class="muted">${t('itemPricesHelp')}</p>
@@ -486,6 +499,27 @@ class App extends Component {
         ${m.id !== s.group.ordererId && html`<button onClick=${() => { close(); this.action('orderer.set', { id: m.id }); }}>${t('makeOrderer')}</button>`}
         <button class="danger" disabled=${s.group.status !== 'open'} onClick=${() => { close(); this.confirm(t('removePerson', m.name), t('remove'), () => this.action('member.remove', { id: m.id })); }}><${Icon} name="alert"/>${t('remove')}</button></div><//>`;
     }
+    if (p.kind === 'upiScan') {
+      let done = false;
+      return html`<${Sheet} title=${t('upiScanSheet')} onClose=${close}>${error}
+        <ol class="steps">${t('upiScanSteps', p.payee.name).map(step => html`<li>${step}</li>`)}</ol>
+        <${Scanner} onError=${m => this.setState({ formError: m })} onResult=${text => {
+          if (done) return; done = true;
+          const scanned = parseUpiQr(text);
+          if (!scanned) { close(); store.toast(t('upiScanBad')); return; }
+          close(); this.run(async () => { if (await store.proposeUpi(p.payee.id, scanned)) store.toast(t('upiScanSent', p.payee.name)); });
+        }}/><//>`;
+    }
+    if (p.kind === 'upiApprove') {
+      const proposal = s.upiProposals?.find(x => x.forId === v.identity.id);
+      if (!proposal) return null;
+      return html`<${Sheet} title=${t('upiApproveTitle')} onClose=${close}>${error}<div class="stack">
+        <p>${t('upiApproveBody', nameOf(s, proposal.byId))}</p>
+        <div class="receipt-like"><span class="muted">${t('payUpiId')}</span><strong class="upi-big">${proposal.upi}</strong>${proposal.name && html`<span>${proposal.name}</span>`}</div>
+        <p class="banner warning"><${Icon} name="alert"/><span>${t('upiApproveWarn')}</span></p>
+        <button class="primary" onClick=${() => submit(() => store.decideUpi(true))}>${t('upiApproveYes')}</button>
+        <button onClick=${() => submit(() => store.decideUpi(false))}>${t('upiApproveNo')}</button></div><//>`;
+    }
     if (p.kind === 'pay') {
       const links = upiLinks({ vpa: p.payee.upi, name: p.payee.name, amount: p.amount, note: t('payNoteText', p.group) });
       if (!links) return null;
@@ -535,6 +569,7 @@ class App extends Component {
       <main id="main">
         ${!v.ready ? html`<p role="status">${t('opening')}</p>` : html`
           ${v.archiveNotice && html`<div class="banner info" role="status"><${Icon} name="history"/><span>${t('archivedNotice', v.archiveNotice.name, v.archiveNotice.unfinished)}</span><button class="quiet" onClick=${() => { store.dismissArchiveNotice(); this.go('history'); }}>${t('viewHistory')}</button><button class="quiet icon-button" aria-label=${t('dismiss')} onClick=${() => store.dismissArchiveNotice()}><${Icon} name="close"/></button></div>`}
+          ${this.upiApproveBanner(v)}
           ${v.updating && html`<p class="sync-status" role="status">${t('updating')}</p>`}
           ${v.storageWarning && html`<div class="banner error" role="alert"><${Icon} name="alert"/><span><span class="sr-only">${t('error')}</span> ${v.storageWarning}</span></div>`}
           ${v.notice && html`<div class="banner error" role="alert"><${Icon} name="alert"/><span><span class="sr-only">${t('error')}</span> ${v.notice}</span><button class="quiet icon-button" aria-label=${t('dismiss')} onClick=${() => store.notice('')}><${Icon} name="close"/></button></div>`}

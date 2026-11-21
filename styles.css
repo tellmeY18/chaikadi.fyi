@@ -344,3 +344,9 @@ progress::-webkit-progress-bar { background: var(--page); } progress::-webkit-pr
 .pay-sheet .row { flex-direction: column; align-items: stretch; gap: var(--space-2); }
 .pay-sheet .row strong { overflow-wrap: anywhere; }
 .pay-sheet .actions .button { flex: 1 1 100%; }
+.scan-upi { align-items: flex-start; }
+.scan-upi > div { min-width: 0; }
+.scan-upi h3 { margin: 0 0 var(--space-1); }
+.scan-upi .actions { margin: var(--space-2) 0 0; }
+.receipt-like { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-3) var(--space-4); border: var(--rule); }
+.upi-big { font-size: var(--text-section); overflow-wrap: anywhere; }

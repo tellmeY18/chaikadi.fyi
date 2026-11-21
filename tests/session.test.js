@@ -106,3 +106,41 @@ test('saveProfile validates, persists and pushes the UPI ID into the group', asy
   const me = app.data.state.members.find(m => m.id === 'host');
   assert.equal(me.name, 'Anu K'); assert.equal(me.upi, 'anu@ybl');
 });
+
+test('scan-to-approve: a proposal changes nothing until the owner approves it', () => {
+  let s = session();
+  s = act(s, 'upi.propose', { forId: 'host', upi: ' Anu@YBL ', name: 'Anu K' }, 'guest');
+  assert.deepEqual(s.upiProposals, [{ forId: 'host', upi: 'anu@ybl', name: 'Anu K', byId: 'guest' }]);
+  assert.equal(s.members.find(m => m.id === 'host').upi, undefined, 'not set yet');
+  assert.throws(() => act(s, 'upi.decide', { approve: true, upi: 'anu@ybl' }, 'guest'), /Nothing to approve/, 'only the owner can decide');
+  assert.throws(() => act(s, 'upi.decide', { approve: true, upi: 'other@ybl' }, 'host'), /changed/);
+  const approved = act(s, 'upi.decide', { approve: true, upi: 'anu@ybl' }, 'host');
+  assert.equal(approved.members.find(m => m.id === 'host').upi, 'anu@ybl'); assert.deepEqual(approved.upiProposals, []);
+  const rejected = act(s, 'upi.decide', { approve: false }, 'host');
+  assert.equal(rejected.members.find(m => m.id === 'host').upi, undefined); assert.deepEqual(rejected.upiProposals, []);
+});
+
+test('proposals are validated, replaced per person, and dropped with a removed member', () => {
+  let s = session();
+  assert.throws(() => act(s, 'upi.propose', { forId: 'host', upi: 'nope' }, 'guest'), /not a UPI/);
+  assert.throws(() => act(s, 'upi.propose', { forId: 'host', upi: 'a1@ybl' }, 'host'), /someone else/);
+  assert.throws(() => act(s, 'upi.propose', { forId: 'ghost', upi: 'a1@ybl' }, 'guest'), /someone else/);
+  s = act(s, 'upi.propose', { forId: 'host', upi: 'first@ybl' }, 'guest');
+  s = act(s, 'upi.propose', { forId: 'host', upi: 'second@ybl' }, 'guest');
+  assert.deepEqual(s.upiProposals.map(x => x.upi), ['second@ybl']);
+  assert.deepEqual(act(s, 'member.remove', { id: 'guest' }).upiProposals, []);
+  assert.deepEqual(act(s, 'member.upi', { upi: 'mine@ybl' }, 'host').upiProposals, [], 'setting it yourself clears the proposal');
+});
+
+test('approving persists the ID on the owner device and survives later syncs', async () => {
+  const app = await store(act(session(), 'upi.propose', { forId: 'host', upi: 'anu@ybl', name: 'Anu' }, 'guest'));
+  app.data.identity.id = 'host';
+  assert.equal(app.proposalForMe().upi, 'anu@ybl');
+  await app.decideUpi(true);
+  assert.equal(app.data.profile.upi, 'anu@ybl');
+  assert.equal(app.data.state.members.find(m => m.id === 'host').upi, 'anu@ybl');
+  await app.saveProfile({ name: 'Anu' });
+  assert.equal(app.data.profile.upi, 'anu@ybl', 'saving the name alone keeps the ID');
+  await app.saveProfile({ name: 'Anu', upi: '' });
+  assert.equal(app.data.state.members.find(m => m.id === 'host').upi, undefined, 'an explicit save can clear it');
+});

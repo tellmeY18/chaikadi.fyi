@@ -62,17 +62,23 @@ Each open starts fresh. Two kinds of data exist:
 
 ## UPI payments
 
-Chaikadi is not a payment app. It opens the payer's own UPI app.
+Chaikadi is not a payment app. It opens the payer's own UPI app. Nobody types a UPI ID
+on first launch: the payee's own QR is the source, and the payee approves it.
 
-- Your UPI ID (Settings, optional) is sent to the group as `member.upi` (protocol v6), so it is
-  visible to people in that group, and stored in round history with the member list.
-- When the order is locked, a non-orderer with an amount owed sees **Pay** on Costs and in
-  History (for rounds ordered by someone with a UPI ID). Only for rupee groups
-  (`Rs`, `₹`, `INR`).
-- The sheet shows amount, payee and UPI ID, **Pay with UPI app** (`upi://pay?pa&pn&am&cu=INR&tn`,
-  Android chooser), Google Pay / PhonePe / Paytm links for iOS, copy ID and a UPI QR for
-  paying from another device.
-- Paid stays the orderer's decision: they mark the stamp when the money arrives.
+1. The orderer has no UPI ID, so non-orderers see a **Pay {orderer} by UPI** card on Order
+   and Costs. It tells them to ask the orderer to show their UPI QR (`My QR` in any UPI app).
+2. A payer taps **Scan UPI QR** and scans it (`parseUpiQr`: only `upi://pay?pa=…`, no fixed
+   amount). That sends `upi.propose` (protocol v7). Nothing changes yet.
+3. The orderer gets an **Add this UPI ID?** prompt (opens by itself, and stays as a banner).
+   **Yes** runs `upi.decide`: the ID becomes theirs, is kept on their device (`profile.upi`)
+   and is shared with the group. **No** discards it. Only the owner can set their own ID.
+4. Once set, everyone sees it; it stays until the owner changes it (Settings, or another
+   scan with approval). Round history keeps it with the member list.
+5. When the order is locked, a non-orderer with an amount owed sees **Pay** on Costs and in
+   History. Only for rupee groups (`Rs`, `₹`, `INR`). The sheet has **Pay with UPI app**
+   (`upi://pay?pa&pn&am&cu=INR&tn`, Android chooser), Google Pay / PhonePe / Paytm links for
+   iOS, copy ID and a UPI QR for paying from another device.
+6. Paid stays the orderer's decision: they mark the stamp when the money arrives.
 
 ## Installing
 

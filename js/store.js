@@ -134,22 +134,39 @@ export class AppStore {
   snoozeInstall() { return this.preferences({ installSnoozedUntil: Date.now() + 14 * 24 * 60 * 60 * 1000 }); }
   dismissArchiveNotice() { this.data.archiveNotice = null; this.emit(); return this.persist(); }
   // Name and UPI ID live on this device and follow you into every group.
+  // Leave upi undefined to keep the saved one; '' removes it.
   async saveProfile({ name, upi }) {
-    name = String(name ?? '').trim(); upi = String(upi ?? '').trim();
+    name = String(name ?? '').trim();
     if (!name || name.length > 30) throw new Error('Enter a display name of 1–30 characters.');
-    if (upi && !validUpi(upi)) throw new Error('Enter a UPI ID like name@bank.');
-    this.data.identity.name = name; this.data.profile = { ...this.data.profile, upi: upi ? normalizeUpi(upi) : '' };
+    if (upi !== undefined) {
+      upi = String(upi).trim();
+      if (upi && !validUpi(upi)) throw new Error('Enter a UPI ID like name@bank.');
+      this.data.profile = { ...this.data.profile, upi: upi ? normalizeUpi(upi) : '' };
+    }
+    this.data.identity.name = name;
     await this.persist(); this.emit();
     const me = this.view().state?.members.find(m => m.id === this.data.identity.id);
     if (me && me.name !== name) await this.dispatch('member.rename', { name });
-    await this.syncProfile();
+    await this.syncProfile(upi !== undefined);
   }
-  async syncProfile() {
+  // Pushes the saved UPI ID into the group. Only an explicit save may clear it.
+  async syncProfile(clear = false) {
     const state = this.view().state;
     if (!state || this.ui.blocked) return;
     const me = state.members.find(m => m.id === this.data.identity.id);
-    if (!me || (me.upi || '') === (this.data.profile.upi || '')) return;
-    await this.dispatch('member.upi', { upi: this.data.profile.upi || '' }).catch(() => {});
+    const want = this.data.profile.upi || '';
+    if (!me || (!want && !clear) || (me.upi || '') === want) return;
+    await this.dispatch('member.upi', { upi: want }).catch(() => {});
+  }
+  // Someone else's UPI QR was scanned: ask them to approve it.
+  proposeUpi(forId, scanned) { return this.dispatch('upi.propose', { forId, upi: scanned.upi, name: scanned.name }); }
+  proposalForMe() { return this.view().state?.upiProposals?.find(x => x.forId === this.data.identity.id) || null; }
+  // Approving makes it this person's UPI ID everywhere, and keeps it until they change it.
+  async decideUpi(approve) {
+    const proposal = this.proposalForMe();
+    if (!proposal) return false;
+    if (approve) { this.data.profile = { ...this.data.profile, upi: proposal.upi }; await this.persist(); }
+    return this.dispatch('upi.decide', { approve, upi: proposal.upi });
   }
   rerollName() { this.data.identity.name = funName(); this.emit(); return this.data.identity.name; }
   setTab(tab) { this.ui.tab = tab; this.touch(); this.emit(); }

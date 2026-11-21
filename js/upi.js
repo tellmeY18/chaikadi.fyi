@@ -28,3 +28,20 @@ export function upiLinks(args) {
     ],
   };
 }
+
+// Reads the payee out of a scanned UPI QR (the "My QR" screen of any UPI app):
+// upi://pay?pa=name@bank&pn=Name. Returns null for anything else. A QR with a
+// fixed amount (am) is a shop's bill, not a person's ID, so it is rejected.
+export function parseUpiQr(text) {
+  const match = /^upi:\/\/pay\?(.+)$/i.exec(String(text ?? '').trim());
+  if (!match) return null;
+  const params = new Map();
+  for (const part of match[1].split('&')) {
+    const i = part.indexOf('=');
+    if (i < 1) continue;
+    try { params.set(part.slice(0, i).toLowerCase(), decodeURIComponent(part.slice(i + 1).replace(/\+/g, ' '))); } catch { return null; }
+  }
+  const upi = params.get('pa');
+  if (!validUpi(upi) || params.has('am')) return null;
+  return { upi: normalizeUpi(upi), name: (params.get('pn') || '').trim().slice(0, 40) };
+}

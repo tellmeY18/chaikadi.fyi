@@ -23,3 +23,12 @@ test('UPI is offered only for rupee groups', () => {
   for (const c of ['Rs', '₹', 'INR', 'rs.']) assert.ok(upiCurrency(c), c);
   for (const c of ['$', '€', 'AED']) assert.ok(!upiCurrency(c), c);
 });
+
+import { parseUpiQr } from '../js/upi.js';
+test('a scanned UPI QR yields the payee ID and name, and nothing else is accepted', () => {
+  assert.deepEqual(parseUpiQr('upi://pay?pa=Raju.K@okaxis&pn=Raju%20Kumar&cu=INR'), { upi: 'raju.k@okaxis', name: 'Raju Kumar' });
+  assert.deepEqual(parseUpiQr('upi://pay?pa=a1@ybl'), { upi: 'a1@ybl', name: '' });
+  assert.deepEqual(parseUpiQr(' UPI://pay?pn=Anu+K&pa=anu@ybl '), { upi: 'anu@ybl', name: 'Anu K' });
+  for (const bad of ['', null, 'https://chaikadi.fyi/?room=ABCD', 'raju@okaxis', 'upi://pay?pn=Raju', 'upi://pay?pa=bad', 'upi://pay?pa=a1@ybl&am=50', 'upi://pay?pa=%E0%A4%A@ybl'])
+    assert.equal(parseUpiQr(bad), null, String(bad));
+});

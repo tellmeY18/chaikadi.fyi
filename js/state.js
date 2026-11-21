@@ -199,6 +199,7 @@ export function reduce(state, intent) {
       assert(p.id !== s.group.hostId && s.members.some(m => m.id === p.id), 'Cannot remove that member.');
       s.members = s.members.filter(m => m.id !== p.id);
       s.picks = s.picks.filter(pick => pick.memberId !== p.id);
+      s.upiProposals = (s.upiProposals || []).filter(x => x.forId !== p.id && x.byId !== p.id);
       delete s.round.payments[p.id];
       if (s.group.ordererId === p.id) s.group.ordererId = s.group.hostId;
       break;
@@ -206,6 +207,26 @@ export function reduce(state, intent) {
       const me = s.members.find(m => m.id === senderId);
       if (p.upi === '' || p.upi === null) delete me.upi;
       else { assert(validUpi(p.upi), 'Enter a UPI ID like name@bank.'); me.upi = normalizeUpi(p.upi); }
+      s.upiProposals = (s.upiProposals || []).filter(x => x.forId !== senderId);
+      break;
+    }
+    // Someone scanned your UPI QR and proposes that ID for you. Nothing changes
+    // until you approve it: only the owner can set their own UPI ID.
+    case 'upi.propose': {
+      assert(s.members.some(m => m.id === p.forId) && p.forId !== senderId, 'Ask someone else to show their UPI QR.');
+      assert(validUpi(p.upi), 'That is not a UPI ID.');
+      const name = typeof p.name === 'string' ? p.name.trim().slice(0, 40) : '';
+      s.upiProposals = [...(s.upiProposals || []).filter(x => x.forId !== p.forId), { forId: p.forId, upi: normalizeUpi(p.upi), name, byId: senderId }];
+      break;
+    }
+    case 'upi.decide': {
+      const proposal = (s.upiProposals || []).find(x => x.forId === senderId);
+      assert(proposal, 'Nothing to approve.');
+      if (p.approve === true) {
+        assert(p.upi === proposal.upi, 'The scanned UPI ID changed. Please review it again.');
+        member.upi = proposal.upi;
+      }
+      s.upiProposals = s.upiProposals.filter(x => x.forId !== senderId);
       break;
     }
     case 'orderer.set':
