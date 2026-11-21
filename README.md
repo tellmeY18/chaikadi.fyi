@@ -254,7 +254,7 @@ open (CC0) food data API, at `EATSIGHTS_BASE_URL` in `js/config.js`
 - **Import:** a saved menu linked to the stall through the normal
   `menu.create` / `menu.upsert` intents. Re-importing asks **Add missing items
   only** or **Replace items**.
-- **Contributions (on by default, Settings → Contributions):** after Finish,
+- **Contributions (off by default, Settings → Contributions):** after Finish,
   the orderer may get one optional **Help the next group** sheet (rules:
   `js/prompts.js`): changed prices, items Eatsights lacks, up to 3 uncertain
   prices, sold-out marks, wait time and a weekly 1–5 rating. **Not now** is the

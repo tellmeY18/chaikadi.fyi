@@ -16,7 +16,7 @@ let esClient = null;
 const eatsights = () => (esClient ??= createEatsightsClient());
 const same = (a, b) => String(a).normalize('NFKC').trim().toLowerCase() === String(b).normalize('NFKC').trim().toLowerCase();
 // On unless turned off in Settings. Nothing is sent without a tap (Share, Yes, Done…).
-export const sharingOn = view => view.preferences.shareEatsights !== false;
+export const sharingOn = view => view.preferences.shareEatsights === true;
 export const esSource = menu => (menu?.source && isEatsightsPlace(menu.source.placeId) ? menu.source : null);
 
 // Group item names -> Eatsights ids, using the place's current menu (cached

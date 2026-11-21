@@ -124,7 +124,7 @@ Please design these in `design/chaikadi-screens.figcraft`; each follows DESIGN.m
    library address).
 
 **Phase 4 (contributions)**
-6. **Settings → Contributions**: "Share prices with Eatsights" on/off (on by default, decided 2026-11-14),
+6. **Settings → Contributions**: "Share prices with Eatsights" on/off (off by default since 2026-11-22: Eatsights is shelved until Chaikadi gains traction),
    what is shared (CC0, no names, a device key), "Reset my contributor key".
 7. **"Share these price updates?" sheet v2** after Finish round: same content, now sends
    to Eatsights; per-item result (accepted / already sent / rejected); offline: "Will send
@@ -172,7 +172,7 @@ Please design these in `design/chaikadi-screens.figcraft`; each follows DESIGN.m
 
 - **D1** Default data source on `main` after approval: Eatsights with static fallback
   (recommended), or keep static until phase 4.
-- **D2** (decided 2026-11-14: **on by default**, each send still needs a tap) Contributions default: off until the user turns them on (recommended), or a
+- **D2** (revised 2026-11-22: **off by default**) Contributions default: off until the user turns them on (recommended), or a
   one-time prompt.
 - **D3** Location for new stalls: Chaikadi blocks geolocation (`Permissions-Policy:
   geolocation=()`) and stores no coordinates. Options: (a) one-time, opt-in "Use my
