@@ -18,11 +18,14 @@ button.primary, .button.primary { color: var(--page); background: var(--ink); }
 button.outbound::after, .button.outbound::after { content: "\2197"; }
 @media (hover: hover) {
   button.primary:hover:not(:disabled), .button.primary:hover { color: var(--ink); background: var(--page); }
-  button:not(.primary):not(.quiet):not(.icon-button):not(.danger):not(:disabled):hover, .button:not(.primary):hover { color: var(--page); background: var(--ink); }
+  main .actions > button:not(.quiet):not(.danger):not(:disabled):hover, main .stack > button:not(.primary):not(.quiet):not(.danger):not(.icon-button):not(:disabled):hover, main .actions > .button:hover { color: var(--page); background: var(--ink); }
 }
 
 /* Type */
 .section-heading h1, .sheet-header h2 { padding: 0; border: 0; }
+/* The title already carries the brand rule: a second h2 rule right under it reads as a double line. */
+main h2, .sheet h2 { padding-top: 0; border-top: 0; }
+main section > section > h2, main .stack > h2:not(:first-child) { padding-top: var(--space-4); border-top: var(--rule); }
 small { display: block; margin-top: 6px; font-size: .875rem; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
 .caption, .muted { font-size: .875rem; line-height: 1.45; color: var(--muted); }
 
@@ -336,3 +339,8 @@ progress::-webkit-progress-bar { background: var(--page); } progress::-webkit-pr
 .pay-sheet .actions .button { width: auto; flex: 1 1 8rem; }
 .archived { border-top: var(--hair); margin: 0; }
 .archived summary { min-height: var(--touch-min); }
+
+.actions.two > button { padding-left: var(--space-1); padding-right: var(--space-1); gap: var(--space-2); white-space: nowrap; }
+.pay-sheet .row { flex-direction: column; align-items: stretch; gap: var(--space-2); }
+.pay-sheet .row strong { overflow-wrap: anywhere; }
+.pay-sheet .actions .button { flex: 1 1 100%; }

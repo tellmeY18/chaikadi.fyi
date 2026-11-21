@@ -183,7 +183,7 @@ class App extends Component {
     return html`<label>${t('yourName')}<span class="with-dice"><input key=${v.identity.name} name="name" required maxlength="30" defaultValue=${v.identity.name} autocomplete="nickname"/><button type="button" class="icon-button" aria-label=${t('randomName')} onClick=${() => this.props.store.rerollName()}><${Icon} name="dice"/></button></span></label>`;
   }
   upiField(v) {
-    return html`<label>${t('upiId')} <span class="muted">(${t('optional')})</span><input key=${v.profile.upi} name="upi" inputmode="email" autocapitalize="none" autocomplete="off" spellcheck=${false} maxlength="100" placeholder=${t('upiPlaceholder')} defaultValue=${v.profile.upi}/><small>${t('upiHome')}</small></label>`;
+    return html`<label><span>${t('upiId')} <span class="muted">(${t('optional')})</span></span><input key=${v.profile.upi} name="upi" inputmode="email" autocapitalize="none" autocomplete="off" spellcheck=${false} maxlength="100" placeholder=${t('upiPlaceholder')} defaultValue=${v.profile.upi}/><small>${t('upiHome')}</small></label>`;
   }
   // Name and UPI ID are remembered on this device, so asking once is enough.
   rememberProfile(f) { return this.props.store.saveProfile({ name: f.name, upi: f.upi }); }
