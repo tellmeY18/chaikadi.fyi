@@ -1,91 +1,99 @@
-# Chaikadi design and brand book · v0.3
+# Chaikadi design · v0.4
 
-**Build source of truth.** v0.3 puts readability first: a black-and-white
-wireframe, a hyperlegible monospace for the interface, crayon colour only where it
-means something, and a receipt that feels like paper. Product: a group tea-break
-ledger for 2–15 people, connected peer-to-peer by room code (PeerJS). Preview:
-the **Redesign v0.3** page of `design/chaikadi-screens.figcraft`; audit in
-`design/UI-ACCESSIBILITY-REPORT.md`.
+**Branding source of truth: https://brand.letsimpl.fyi.** Chaikadi defines no
+colour, font, size, spacing or component style of its own. Tokens, fonts, base
+CSS and `ls-` components are vendored into `brand/` and loaded before
+`styles.css`. This file only records what is specific to the product.
 
-## Decisions
+- Update the brand: `npm run brand` (fetches the files, writes `brand/brand.json`).
+  `npm run brand:check` fails if `brand/` is behind the live site. Never edit `brand/` by hand.
+- Rules we follow (from the brand's llms.txt): black and white only; the four status
+  fills (danger, warning, success, info) are the only colour, always with an icon or
+  word; text on a fill is `#111111`; square corners, 2px ink borders, no shadows,
+  gradients or hatch; 16px minimum read text; 44px touch targets; 3px focus outline;
+  no third-party requests; honour colour scheme and reduced motion.
+- We do not make brand material (logo, icons, splash, social image). The app icons in
+  `icons/` pre-date the brand and are placeholders until the brand supplies assets
+  (see https://brand.letsimpl.fyi/assets/manifest.json).
+- `tests/design.test.js` enforces the above: load order, no own colours, shadows,
+  gradients or rounded corners, contrast of the status pairs.
+
+## Product decisions
 
 | Decision | Selected |
 | --- | --- |
-| Page | Pure white `#FFFFFF` (light), pitch black `#000000` (dark) |
-| Interface type | Atkinson Hyperlegible Mono 400 / 700, locally hosted WOFF2 |
-| Receipt type | Courier Prime 400 / 700, receipts and the lock moment only |
-| Colour | Crayon only, with meaning (below); everything else black and white |
 | Tagline | Decide, order, split. |
 | Language | English first; short words; catalogue in `js/strings.js` |
-| Currency | `Rs` with Indian grouping; ₹ is an optional local-font fallback |
-| Theme | Two: Light and Dark. First run follows the device, then persisted |
+| Currency | `Rs` with Indian grouping; ₹ is an optional fallback |
+| Theme | Light and Dark. First run follows the device, then persisted |
 | Connection | Room code only (PeerJS). No manual / offline pairing |
 | Tabs | Menu, My picks, Order, Costs; Group / History / Settings in app menu |
 | Paid | Ink stamp “PAID” on the receipt. Never coloured |
 | Person placing order | Orderer |
 
-## Essence and voice
+## How brand rules map to the app
 
-A Kerala tea stall’s ledger in your pocket. Clear before clever: use a word only
-if the screen needs it; no explanatory sentences where a label will do. Sentence
-case, two weights, short verbs. User-entered names retain their casing.
+| Need | Brand piece |
+| --- | --- |
+| Room code plate, filled code boxes | Inverse ink block (like the wordmark mark) |
+| Primary action (one per screen) | Solid ink button |
+| Share, QR, Copy, Pay with app | Outline button with trailing ↗ (outbound) |
+| Delete, Start new session, Leave | Danger fill, dashed edge, triangle icon |
+| Online / offline | Filled / hollow square plus a word in the label |
+| Host, Orderer tags | 1px ink outline |
+| Errors, warnings, info | Left bar + cross / double border + triangle / hairline + “i” |
+| Receipts | `.ls-receipt` (paper, perforation, Courier Prime, never inverts) |
+| QR codes | Black on white in both themes so cameras can read them (only literal colour) |
 
-## Crayon colour = meaning
+## Sessions and persistence
 
-Soft hand-coloured wax fills, used sparingly. Text on crayon is always `#111111`.
-Colour never works alone: every crayon also carries a word or shape.
+Each open starts fresh. Two kinds of data exist:
 
-| Crayon | Hex | Only for |
-| --- | --- | --- |
-| Yellow | `#FFE066` | The room code (plate, completed join boxes) |
-| Blue | `#9FCBFF` | Outbound: Share link, Show QR, Scan QR, Copy, Export, Suggest an update |
-| Green | `#A7E3A0` | Online dots, Host / Orderer tags, the one forward button per screen |
+- **Kept on the device:** display name, UPI ID (`profile.upi`), preferences, contributor key,
+  and the archive of earlier sessions.
+- **The current session** (group, menus, picks, round): expires after one hour without
+  activity (`SESSION_TTL_MS`). Activity is any tap or key, an intent, a synced change,
+  or the app being hidden (that moment is stored). On the next open, or when the app
+  returns to the foreground, an expired session is archived: an open round with picks is
+  finished as it stands, the group is left, and Home shows “archived to History” with a
+  View history button. Empty sessions are dropped silently. Leaving a group or starting a
+  new session archives too. The archive keeps the 30 newest sessions and is read-only,
+  with Pay buttons for your own unpaid share.
 
-Menu, My picks and History have no green button: the bottom tabs move you on.
+## UPI payments
 
-## Palette
+Chaikadi is not a payment app. It opens the payer's own UPI app.
 
-| Token | Light | Dark |
-| --- | --- | --- |
-| `--page` | #FFFFFF | #000000 |
-| `--ink` | #000000 | #FFFFFF |
-| `--muted` | #4D4D4D | #B8B8B8 |
-| `--line` | #8C8C8C | #767676 |
-| `--receipt` | #FBF6E9 | #EDE7D6 (dimmed for glare) |
-| `--receipt-ink` | #111111 | #111111 |
+- Your UPI ID (Settings, optional) is sent to the group as `member.upi` (protocol v6), so it is
+  visible to people in that group, and stored in round history with the member list.
+- When the order is locked, a non-orderer with an amount owed sees **Pay** on Costs and in
+  History (for rounds ordered by someone with a UPI ID). Only for rupee groups
+  (`Rs`, `₹`, `INR`).
+- The sheet shows amount, payee and UPI ID, **Pay with UPI app** (`upi://pay?pa&pn&am&cu=INR&tn`,
+  Android chooser), Google Pay / PhonePe / Paytm links for iOS, copy ID and a UPI QR for
+  paying from another device.
+- Paid stays the orderer's decision: they mark the stamp when the money arrives.
 
-Controls have 2px ink borders. Disabled is dashed grey. Errors: alert icon, 8px left
-bar, hidden “Error” prefix for screen readers. Warnings: double border. Destructive
-actions: dashed border plus alert icon. A 50% black scrim is the only translucency.
+## Installing
+
+Android Chrome: the `beforeinstallprompt` event is kept and an **Install app** button
+shows the native dialog; without the event the card gives browser-menu steps. iOS (Safari
+or Chrome): three Share → Add to Home Screen steps, since iOS has no install API.
+In-app browsers are told to open Chrome or Safari. The card appears on Home and Group,
+snoozes for 14 days on Not now, never shows once installed, and Settings always offers it.
 
 ## Receipt
+
+Order, Costs and each History round use the brand receipt. Paid lines carry a tilted ink stamp.
 
 Order, Costs and each History round are receipts: paper stock, perforated top and
 bottom edges, a soft lift on white (none on black), Courier Prime, every character
 ink black. Leaders are dotted, totals sit under a double rule, the grand total is
 32px. Paid lines carry a tilted ink stamp. The receipt never inverts in dark mode.
 
-## Type and grid
+## Layout
 
-Interface: Atkinson Hyperlegible Mono (distinct 0/O, 1/I/l). Malayalam names/notes
-and optional ₹ use local Noto Serif Malayalam. Fonts total under 150 KB.
-
-| Role | Size / line height |
-| --- | --- |
-| Plate | 56 / 60 maximum; scales to fit narrow screens |
-| Screen title | 32 / 40 (1.75rem of an 18px root) |
-| Section heading | 22 / 30 |
-| Subheading / amount | 18 / 28 |
-| Body | 18 / 28 |
-| Secondary | 16 / 24 |
-| Smallest (optional text only) | 14 / 20 |
-| Grand total | 32 / 36 |
-
-Sizes are rem-based. Content measure: 560px maximum, 16px side padding on phones,
-24px from 600px. Spacing scale: 4, 8, 12, 16, 24, 32, 48, 64px. Left-align prose,
-right-align amounts. Only the plate and empty-state drawings are centered.
-Screen titles have a 2px ink rule. Totals have a double rule. Item/amount
-rows have decorative dotted leaders and wrap long names instead of truncating.
+Content measure 560px; spacing scale 4–64px (brand tokens); left-align prose, right-align amounts. Item/amount rows have decorative dotted leaders and wrap long names.
 
 ## Structure and components
 
@@ -154,11 +162,10 @@ dismissible installation hint.
 
 ## Implementation notes
 
-- `styles.css`: tokens, layout and components; no build step.
+- `brand/`: vendored brand (do not edit). `styles.css`: layout and app components only; no build step.
 - `js/strings.js`: English UI catalogue and Indian money formatting.
 - `js/components.js`: original local SVG icons, sheets, dialogs, four-box code.
-- `fonts/`: complete OFL notices; Malayalam is glyph-triggered rather than an
-  untranslated language switch. All font files are small enough to precache.
+- `brand/fonts/`: from the brand, with OFL notices; Malayalam loads only for Malayalam text. All files are precached.
 - OS-controlled splash/icon rendering varies by iOS/Android; the manifest, Apple
   metadata and monochrome icons provide the PWA surfaces the web can control.
 - No default menu is silently generated or deleted. History and local state

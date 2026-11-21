@@ -5,6 +5,10 @@ const store = new AppStore();
 mount(store, document.getElementById('app'));
 window.chaikadiStarted = true;
 try { sessionStorage.removeItem('chaikadi-recovered'); } catch { /* storage blocked */ }
+// Chrome (Android, desktop) fires this once the app is installable. Keep the
+// event so an Install button can show the native dialog at a good moment.
+window.addEventListener('beforeinstallprompt', event => { event.preventDefault(); store.ui.installEvent = event; store.emit(); });
+window.addEventListener('appinstalled', () => { store.ui.installEvent = null; store.emit(); });
 store.boot(new URL(location.href).searchParams.get('room')?.toUpperCase() || '')
   .catch(error => store.notice(`Could not restore local data: ${error.message}`));
 
@@ -24,7 +28,7 @@ window.addEventListener('pageshow', event => { if (event.persisted) store.foregr
 let registration = null, lastCheck = 0, applying = false, takenOver = false, lastInput = Date.now();
 const IDLE_MS = 60 * 1000, LOADED = Date.now();
 let touched = false;
-for (const type of ['pointerdown', 'keydown', 'input', 'scroll']) addEventListener(type, () => { lastInput = Date.now(); touched = true; }, { passive: true, capture: true });
+for (const type of ['pointerdown', 'keydown', 'input', 'scroll']) addEventListener(type, () => { lastInput = Date.now(); touched = true; store.touch(); }, { passive: true, capture: true });
 function safeToRestart() {
   if (document.visibilityState === 'hidden') return true;
   if (!touched && Date.now() - LOADED < 10 * 1000) return true; // just opened

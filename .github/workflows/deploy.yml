@@ -28,6 +28,8 @@ jobs:
         with:
           node-version: 22
       - run: node --test tests/*.test.js
+      - run: node tools/sync-brand.mjs --check
+        continue-on-error: true # warns when the live brand moved ahead of brand/
 
   deploy:
     needs: test

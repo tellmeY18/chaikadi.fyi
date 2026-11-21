@@ -1,4 +1,5 @@
 import { CATEGORIES, validCode } from './config.js';
+import { validUpi, normalizeUpi } from './upi.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
@@ -129,6 +130,30 @@ export function costs(state) {
   return { people, estimatedTotal, actualTotal };
 }
 
+// A finished round as stored in history: everything needed to show it later.
+export function roundRecord(s, date) {
+  const totals = costs(s);
+  return { ...clone(s.round), date, picks: clone(s.picks), menu: clone(activeItems(s)), menuName: activeMenu(s)?.name || '',
+    members: clone(s.members), currency: s.group.currency, ordererId: s.group.ordererId,
+    estimatedTotal: totals.estimatedTotal, amounts: totals.people.map(m => ({ id: m.id, name: m.name, owed: m.owed })) };
+}
+
+// A session is a group plus its current round. When it ends without Finish
+// (idle too long, or the person leaves) whatever was entered is kept as
+// history, so nothing typed is lost. Returns null for an empty session.
+export const SESSION_ARCHIVE_LIMIT = 30;
+export const isStale = (lastActive, now, ttl) => Number.isFinite(lastActive) && now - lastActive > ttl;
+export function archiveSession(state, { endedAt, archivedAt = endedAt }) {
+  if (!state) return null;
+  const s = migrate(clone(state));
+  const rounds = clone(s.history);
+  if (s.picks.length > 0) rounds.push(roundRecord(s, new Date(endedAt).toISOString()));
+  if (!rounds.length) return null;
+  return { id: `${s.group.id}:${s.round.id}`, name: s.group.name, roomCode: s.group.roomCode, currency: s.group.currency,
+    unfinished: s.picks.length > 0, endedAt: new Date(endedAt).toISOString(), archivedAt: new Date(archivedAt).toISOString(), rounds };
+}
+export const addArchive = (archive, entry) => entry ? [entry, ...(archive || []).filter(e => e.id !== entry.id)].slice(0, SESSION_ARCHIVE_LIMIT) : archive || [];
+
 // The only authoritative writer is the host. This pure reducer also drives
 // offline optimistic previews; the host checks the same intents on reconnect.
 // IDs and round IDs originate outside this function: no time/random side effects.
@@ -177,6 +202,12 @@ export function reduce(state, intent) {
       delete s.round.payments[p.id];
       if (s.group.ordererId === p.id) s.group.ordererId = s.group.hostId;
       break;
+    case 'member.upi': {
+      const me = s.members.find(m => m.id === senderId);
+      if (p.upi === '' || p.upi === null) delete me.upi;
+      else { assert(validUpi(p.upi), 'Enter a UPI ID like name@bank.'); me.upi = normalizeUpi(p.upi); }
+      break;
+    }
     case 'orderer.set':
       hostOnly();
       assert(s.members.some(m => m.id === p.id), 'Unknown orderer.');
@@ -297,10 +328,7 @@ export function reduce(state, intent) {
       ordererOnly();
       assert(s.group.status === 'locked', 'Lock the order before finishing the round.');
       assert(idString(p.nextRoundId) && p.nextRoundId !== s.round.id && typeof p.date === 'string' && Number.isFinite(Date.parse(p.date)), 'Invalid round.');
-      const totals = costs(s);
-      s.history.push({ ...clone(s.round), date: p.date, picks: clone(s.picks), menu: clone(activeItems(s)), menuName: activeMenu(s)?.name || '',
-        members: clone(s.members), currency: s.group.currency, ordererId: s.group.ordererId,
-        estimatedTotal: totals.estimatedTotal, amounts: totals.people.map(m => ({ id: m.id, name: m.name, owed: m.owed })) });
+      s.history.push(roundRecord(s, p.date));
       s.picks = []; s.group.status = 'open';
       s.round = { id: p.nextRoundId, actualTotal: null, splitMode: 'equal', payments: {} };
       break;

@@ -10,6 +10,8 @@ import { DevOptions } from './dev-ui.js';
 import { drawQR, scanQR } from './qr.js';
 import { t, money } from './strings.js';
 import { Icon, Sheet, Modal, CodeInput, Empty } from './components.js';
+import { upiLinks, upiCurrency } from './upi.js';
+import { currentPlatform, installOffer } from './install.js';
 
 const html = htm.bind(h);
 const fields = event => Object.fromEntries(new FormData(event.currentTarget));
@@ -18,7 +20,7 @@ const nameOf = (state, id) => state.members.find(m => m.id === id)?.name || t('f
 const leader = (label, value, cls = '') => html`<div class=${`leader ${cls}`}><span>${label}</span><span class="dots" aria-hidden="true"></span><strong class="amount">${value}</strong></div>`;
 const heading = (title, description) => html`<div class="section-heading"><h1>${title}</h1>${description && html`<p>${description}</p>`}</div>`;
 // Receipts are paper: Courier Prime, ink black, perforated edges. Never inverted.
-const receipt = (children, key) => html`<div class="receipt" key=${key}><div class="receipt-paper">${children}</div></div>`;
+const receipt = (children, key) => html`<div class="ls-receipt" key=${key}>${children}</div>`;
 const systemDark = () => typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches;
 // Two themes only. Older saved 'auto' resolves once to the device setting.
 export const resolvedTheme = theme => theme === 'dark' || theme === 'light' ? theme : systemDark() ? 'dark' : 'light';
@@ -206,14 +208,44 @@ class App extends Component {
         <button class="primary">${t('create')}</button>
         <button type="button" onClick=${() => this.setState({ homeMode: 'join' })}>${t('join')}</button>
       </form>
-      ${!v.preferences.installDismissed && !matchMedia('(display-mode: standalone)').matches && html`<aside class="install-hint"><details><summary>${t('install')}</summary><p>${t('installSteps')}</p></details><button class="quiet" onClick=${() => this.run(() => store.preferences({ installDismissed: true }))}>${t('installDone')}</button></aside>`}
+      ${this.installCard(v)}
     </section>`;
+  }
+  installCard(v, force = false) {
+    const offer = installOffer(currentPlatform(), { hasPrompt: !!v.installEvent, snoozedUntil: v.preferences.installSnoozedUntil || 0, force });
+    if (!offer) return null;
+    const store = this.props.store, steps = offer === 'ios' ? t('installIos') : offer === 'android' ? t('installAndroid') : null;
+    return html`<aside class="banner info install-card" aria-labelledby="install-title"><${Icon} name="install"/><div><h3 id="install-title">${t('installTitle')}</h3><p>${t('installWhy')}</p>
+      ${steps && html`<ol class="steps">${steps.map(step => html`<li>${step}</li>`)}</ol>`}
+      ${offer === 'browser' && html`<p>${t('installBrowser')}</p>`}
+      <div class="actions">${offer === 'prompt' && html`<button onClick=${() => this.run(() => store.promptInstall())}><${Icon} name="install"/>${t('installAction')}</button>`}
+      ${!force && html`<button class="quiet" onClick=${() => this.run(() => store.snoozeInstall())}>${t('installNotNow')}</button>`}</div></div></aside>`;
+  }
+  // UPI: open the payer's own UPI app with payee, amount and note filled in.
+  payAction(v, { payee, amount, currency, group, estimate }) {
+    if (!upiCurrency(currency) || !payee?.upi || !(amount > 0)) return null;
+    return html`<button class="r-button" aria-label=${`${t('payTo', payee.name)} ${money(amount, currency)}`} onClick=${() => this.setState({ payQR: false, sheet: { kind: 'pay', payee, amount, currency, group, estimate } })}>${t('pay')}</button>`;
+  }
+  roundReceipt(v, round, { live }) {
+    const s = v.state, me = v.identity.id;
+    const payee = { name: round.members.find(m => m.id === round.ordererId)?.name || t('formerMember'),
+      upi: (live && s?.members.find(m => m.id === round.ordererId)?.upi) || round.members.find(m => m.id === round.ordererId)?.upi };
+    return receipt(html`<p class="r-strong">${date(round.date)}</p><p>${round.menuName || ''}</p><p>${t('orderer')}: ${payee.name}</p><p class="r-gap"></p>
+      <ul class="r-people">${round.amounts.filter(p => p.owed || round.picks.some(pick => pick.memberId === p.id)).map(person => {
+        const paid = !!round.payments[person.id];
+        const control = person.id === round.ordererId ? html`<span class="r-note">${t('ownShare')}</span>`
+          : live && round.ordererId === me ? html`<button class=${paid ? 'stamp' : 'r-button'} aria-pressed=${paid} onClick=${() => this.action('history.payment', { roundId: round.id, id: person.id, paid: !paid })}>${t(paid ? 'paid' : 'unpaid')}</button>`
+          : paid ? html`<span class="stamp">${t('paid')}</span>`
+          : person.id === me ? this.payAction(v, { payee, amount: person.owed, currency: round.currency, group: s?.group.name || '' }) : '';
+        return html`<li key=${person.id}>${leader(person.name, money(person.owed, round.currency))}<span class="r-pay">${control}</span></li>`;
+      })}</ul>
+      <p class="r-rule" aria-hidden="true"></p>${leader(t('finalTotal'), money(round.actualTotal ?? round.estimatedTotal, round.currency), 'r-strong')}`, round.id);
   }
   lobby(v) {
     const s = v.state, host = v.role === 'host';
     const link = `${location.origin}/?room=${s.group.roomCode}`;
     return html`<section>${heading(s.group.name)}
-      <button class="room-plate" aria-label=${`${t('roomCode')} ${[...s.group.roomCode].join(' ')}. ${t('copy')}`} onClick=${() => this.copy(s.group.roomCode, t('codeCopied'))}><span class="plate-label">${t('roomCode')}</span><span class="plate-letters crayon crayon-yellow" aria-hidden="true">${[...s.group.roomCode].map(c => html`<span>${c}</span>`)}</span></button>
+      <button class="room-plate" aria-label=${`${t('roomCode')} ${[...s.group.roomCode].join(' ')}. ${t('copy')}`} onClick=${() => this.copy(s.group.roomCode, t('codeCopied'))}><span class="plate-label">${t('roomCode')}</span><span class="plate-letters" aria-hidden="true">${[...s.group.roomCode].map(c => html`<span>${c}</span>`)}</span></button>
       <div class="actions two"><button class="outbound" onClick=${() => this.share(link)}><${Icon} name="share"/>${t('share')}</button><button class="outbound" aria-expanded=${this.state.showQR} onClick=${() => this.setState({ showQR: !this.state.showQR })}><${Icon} name="qr"/>${t(this.state.showQR ? 'hideQR' : 'showQR')}</button></div>
       ${this.state.showQR && html`<${QR} text=${link}/>`}
       ${host && !v.roomReady && html`<p class="banner warning"><${Icon} name="alert"/>${t('codeUnavailable')}</p>`}
@@ -222,15 +254,16 @@ class App extends Component {
         <ul class="people">${s.members.map(m => {
           const online = m.online && (host || v.hostOnline);
           return html`<li key=${m.id}><div class="avatar" aria-hidden="true">${[...m.name][0]}</div><div class="person-detail"><strong>${m.name} ${m.id === v.identity.id ? t('you') : ''}</strong>
-            ${(m.id === s.group.hostId || m.id === s.group.ordererId) && html`<div class="role-tags">${m.id === s.group.hostId && html`<span class="tag crayon crayon-green">${t('host')}</span>`}${m.id === s.group.ordererId && html`<span class="tag crayon crayon-green">${t('orderer')}</span>`}</div>`}</div>
-            <span class=${`presence ${online ? 'online crayon-green' : ''}`} role="img" aria-label=${t(online ? 'online' : 'offline')}></span>
+            ${(m.id === s.group.hostId || m.id === s.group.ordererId) && html`<div class="role-tags">${m.id === s.group.hostId && html`<span class="tag">${t('host')}</span>`}${m.id === s.group.ordererId && html`<span class="tag">${t('orderer')}</span>`}</div>`}</div>
+            <span class=${`presence ${online ? 'online' : ''}`} role="img" aria-label=${t(online ? 'online' : 'offline')}></span>
             ${host && m.id !== s.group.hostId && html`<button class="icon-button" aria-label=${`${t('edit')} ${m.name}`} onClick=${() => this.open({ kind: 'member', member: m })}><${Icon} name="dots"/></button>`}
           </li>`;
         })}</ul>
         ${host && s.group.ordererId !== s.group.hostId && html`<button onClick=${() => this.action('orderer.set', { id: s.group.hostId })}>${t('hostOrders')}</button>`}
       </section>
       <button class="primary full" onClick=${() => this.go(s.picks.some(p => p.memberId === v.identity.id) || s.menu.length ? 'picks' : 'menu')}>${t('goMenu')}</button>
-      <button class="new-session full" onClick=${() => this.confirm(t('newSessionConfirm'), t('newSession'), () => this.props.store.newSession(funGroup()))}><${Icon} name="refresh"/>${t('newSession')}</button>
+      ${this.installCard(v)}
+      <button class="new-session full" onClick=${() => this.confirm(t('newSessionConfirm'), t('newSession'), () => this.props.store.newSession(funGroup()))}><${Icon} name="alert"/>${t('newSession')}</button>
     </section>`;
   }
   menu(v) {
@@ -306,14 +339,17 @@ class App extends Component {
     const pricer = orderer || s.group.hostId === v.identity.id;
     const ordered = activeItems(s).filter(item => s.picks.some(p => p.itemId === item.id));
     const pricesOpen = pricer && ordered.length > 0 && (!locked || s.round.actualTotal === null);
+    const ordererMember = s.members.find(m => m.id === s.group.ordererId);
     const payment = person => {
       const paid = !!s.round.payments[person.id];
       if (person.id === s.group.ordererId) return html`<span class="r-note">${t('ownShare')}</span>`;
       if (!person.participating) return html`<span class="r-note">—</span>`;
+      if (!orderer && locked && !paid && person.id === v.identity.id) return this.payAction(v, { payee: ordererMember, amount: person.owed, currency: c, group: s.group.name, estimate: s.round.actualTotal === null }) || '';
       if (orderer && locked) return html`<button class=${paid ? 'stamp' : 'r-button'} aria-pressed=${paid} aria-label=${`${person.name}: ${paid ? 'paid' : 'not paid'}`} onClick=${() => this.action('payment.set', { id: person.id, paid: !paid })}>${t(paid ? 'paid' : 'unpaid')}</button>`;
       return paid ? html`<span class="stamp">${t('paid')}</span>` : '';
     };
     return html`<section>${heading(t('costs'))}
+      ${orderer && locked && upiCurrency(c) && !ordererMember?.upi && html`<div class="banner info"><${Icon} name="rupee"/><span>${t('payAddOwn')}</span><button class="quiet" onClick=${() => this.go('settings')}>${t('payAddOwnAction')}</button></div>`}
       ${pricesOpen && html`<form class="stack price-form" key=${`prices-${s.round.id}-${s.group.version}`} onSubmit=${e => { e.preventDefault(); const f = fields(e); this.run(() => this.action('item.price', { prices: ordered.map(item => ({ id: item.id, price: cents(f[`price-${item.id}`]) })) }, t('pricesSaved'))); }}>
         <h2>${t('itemPrices')}</h2><p class="muted">${t('itemPricesHelp')}</p>
         ${ordered.map(item => html`<label key=${item.id}>${item.name}<input name=${`price-${item.id}`} type="number" inputmode="decimal" min="0" max="1000000" step="0.01" placeholder="0" defaultValue=${item.price ? item.price / 100 : ''}/></label>`)}
@@ -336,15 +372,14 @@ class App extends Component {
     </section>`;
   }
   history(v) {
-    const s = v.state, tally = debts(s);
+    const s = v.state, tally = s ? debts(s) : [];
+    const empty = !s?.history.length && !v.archive.length;
     return html`<section>${heading(t('history'))}
-      ${!s.history.length ? html`<${Empty} text=${t('emptyHistory')} icon="history"/>` : html`<section><h2>${t('outstanding')}</h2>${!tally.length ? html`<p>${t('allSettled')}</p>` : html`<ul class="item-list">${tally.map(d => html`<li>${leader(`${d.name} → ${d.orderer}`, money(d.amount, d.currency))}</li>`)}</ul>`}</section>`}
-      ${[...s.history].reverse().map(round => receipt(html`<p class="r-strong">${date(round.date)}</p><p>${round.menuName || ''}</p><p>${t('orderer')}: ${round.members.find(m => m.id === round.ordererId)?.name}</p><p class="r-gap"></p>
-        <ul class="r-people">${round.amounts.filter(p => p.owed || round.picks.some(pick => pick.memberId === p.id)).map(person => {
-          const paid = !!round.payments[person.id];
-          return html`<li key=${person.id}>${leader(person.name, money(person.owed, round.currency))}<span class="r-pay">${person.id === round.ordererId ? html`<span class="r-note">${t('ownShare')}</span>` : round.ordererId === v.identity.id ? html`<button class=${paid ? 'stamp' : 'r-button'} aria-pressed=${paid} onClick=${() => this.action('history.payment', { roundId: round.id, id: person.id, paid: !paid })}>${t(paid ? 'paid' : 'unpaid')}</button>` : paid ? html`<span class="stamp">${t('paid')}</span>` : ''}</span></li>`;
-        })}</ul>
-        <p class="r-rule" aria-hidden="true"></p>${leader(t('finalTotal'), money(round.actualTotal ?? round.estimatedTotal, round.currency), 'r-strong')}`, round.id))}
+      ${empty && html`<${Empty} text=${t('emptyHistory')} icon="history"/>`}
+      ${s?.history.length > 0 && html`<section><h2>${t('outstanding')}</h2>${!tally.length ? html`<p>${t('allSettled')}</p>` : html`<ul class="item-list">${tally.map(d => html`<li>${leader(`${d.name} → ${d.orderer}`, money(d.amount, d.currency))}</li>`)}</ul>`}</section>`}
+      ${s && [...s.history].reverse().map(round => this.roundReceipt(v, round, { live: true }))}
+      ${v.archive.length > 0 && html`<section><h2>${t('previousSessions')}</h2>${v.archive.map(entry => html`<details class="archived" key=${entry.id}><summary>${entry.name} · ${date(entry.endedAt)} · ${t('archivedRounds', entry.rounds.length)}${entry.unfinished ? ` · ${t('notFinished')}` : ''}</summary>
+        ${[...entry.rounds].reverse().map(round => this.roundReceipt(v, round, { live: false }))}</details>`)}</section>`}
     </section>`;
   }
   settings(v) {
@@ -352,7 +387,13 @@ class App extends Component {
     const theme = resolvedTheme(v.preferences.theme);
     return html`<section>${heading(t('settings'))}
       <div class="stack">
-      ${s && html`<form class="stack" onSubmit=${e => { e.preventDefault(); this.action('member.rename', { name: fields(e).name }); }}><label>${t('displayName')}<span class="with-dice"><input name="name" required maxlength="30" defaultValue=${v.identity.name}/><button>${t('saveName')}</button></span></label></form>`}
+      <form class="stack" key=${`profile-${v.identity.name}-${v.profile.upi}`} onSubmit=${e => { e.preventDefault(); const f = fields(e); this.run(async () => { await store.saveProfile({ name: f.name, upi: f.upi }); store.toast(t('profileSaved')); }); }}>
+        <h2>${t('profileTitle')}</h2>
+        <label>${t('displayName')}<input name="name" required maxlength="30" autocomplete="nickname" defaultValue=${v.identity.name}/></label>
+        <label>${t('upiId')}<input name="upi" inputmode="email" autocapitalize="none" autocomplete="off" spellcheck=${false} maxlength="100" placeholder=${t('upiPlaceholder')} defaultValue=${v.profile.upi}/><small>${t('upiHint')} ${t('upiClear')}</small></label>
+        <button>${t('saveName')}</button><p class="muted">${t('sessionKeepNote')}</p>
+      </form>
+      ${this.installCard(v, true)}
       ${v.role === 'host' && s && html`<form class="stack" onSubmit=${e => { e.preventDefault(); this.action('group.currency', { currency: fields(e).currency }); }}><label>${t('groupCurrency')}<span class="with-dice"><input name="currency" required maxlength="8" defaultValue=${s.group.currency} list="currencies"/><button disabled=${s.group.status !== 'open'}>${t('saveCurrency')}</button></span><small>${t('currencyHint')}</small></label><datalist id="currencies"><option value="Rs"/><option value="₹"/><option value="$"/><option value="€"/></datalist></form>`}
       <fieldset><legend>${t('theme')}</legend><div class="segmented">${['light', 'dark'].map(value => html`<button type="button" aria-pressed=${theme === value} onClick=${() => this.run(() => store.preferences({ theme: value }))}>${theme === value && html`<${Icon} name="check" size=${20}/>`}${t(value)}</button>`)}</div></fieldset>
       ${s && html`<button class="outbound" onClick=${() => this.download(store.backup())}><${Icon} name="share"/>${t('export')}</button>`}
@@ -438,6 +479,20 @@ class App extends Component {
         ${m.id !== s.group.ordererId && html`<button onClick=${() => { close(); this.action('orderer.set', { id: m.id }); }}>${t('makeOrderer')}</button>`}
         <button class="danger" disabled=${s.group.status !== 'open'} onClick=${() => { close(); this.confirm(t('removePerson', m.name), t('remove'), () => this.action('member.remove', { id: m.id })); }}><${Icon} name="alert"/>${t('remove')}</button></div><//>`;
     }
+    if (p.kind === 'pay') {
+      const links = upiLinks({ vpa: p.payee.upi, name: p.payee.name, amount: p.amount, note: t('payNoteText', p.group) });
+      if (!links) return null;
+      return html`<${Sheet} title=${t('payTitle')} onClose=${close}><div class="stack pay-sheet">
+        <p class="pay-amount amount">${money(p.amount, p.currency)}</p><p>${t('payTo', p.payee.name)}</p>
+        ${p.estimate && html`<p class="banner warning"><${Icon} name="alert"/><span>${t('payEstimate')}</span></p>`}
+        <div class="row"><span><span class="muted">${t('payUpiId')}</span><br/><strong>${p.payee.upi}</strong></span><button class="outbound" onClick=${() => this.copy(p.payee.upi, t('payCopied'))}><${Icon} name="copy"/>${t('payCopy')}</button></div>
+        <a class="button primary" href=${links.generic}>${t('payApp')}</a>
+        <h3>${t('payOtherApps')}</h3>
+        <div class="actions">${links.apps.map(app => html`<a key=${app.id} class="button outbound" href=${app.href}>${app.name}</a>`)}</div>
+        <button class="outbound" aria-expanded=${!!this.state.payQR} onClick=${() => this.setState({ payQR: !this.state.payQR })}><${Icon} name="qr"/>${t(this.state.payQR ? 'payHideQR' : 'payShowQR')}</button>
+        ${this.state.payQR && html`<${QR} text=${links.generic}/>`}
+        <p class="muted">${t('payDesktop')}</p><p class="muted">${t('payNote')}</p></div><//>`;
+    }
     if (p.kind === 'copy') return html`<${Sheet} title=${t('selectCopy')} onClose=${close}><textarea readonly rows="8" value=${p.text} onFocus=${e => e.currentTarget.select()} autofocus></textarea><button class="primary" onClick=${close}>${t('done')}</button><//>`;
     if (p.kind === 'locked') return html`<${Sheet} title=${t('order')} onClose=${close} className="lock-reveal"><${Icon} name="tumbler" size=${48}/><div class="typed-lock" aria-hidden="true">${t('locked')}</div><div class="lock-rule" aria-hidden="true"></div><p>${t('lockHelp')}</p><button class="primary" onClick=${close}>${t('done')}</button><//>`;
     if (p.kind === 'shuffle') {
@@ -466,19 +521,20 @@ class App extends Component {
     const onlineCount = s ? s.members.filter(m => m.online && online).length : 0;
     const count = s?.picks.filter(p => p.memberId === v.identity.id).reduce((n, p) => n + p.qty, 0) || 0;
     return html`<div class="app-shell"><header class="app-header"><div class="header-inner"><a class="brand" href="#" onClick=${e => { e.preventDefault(); this.go('lobby'); }}><${Icon} name="tumbler" size=${28}/><span>${t('app')}</span></a>
-      <div class="header-actions">${s && html`<button class="header-presence" aria-label=${`${t('group')}: ${t('onlineCount', onlineCount)}`} onClick=${() => this.go('lobby')}><span class=${`presence ${online ? 'online crayon-green' : ''}`} aria-hidden="true"></span><span aria-hidden="true">${onlineCount}</span></button>`}<button class="quiet icon-button" aria-label=${t('more')} aria-expanded=${this.state.appMenu} onClick=${() => this.setState({ appMenu: !this.state.appMenu })}><${Icon} name="more"/></button></div></div>
-      ${this.state.appMenu && html`<nav class="app-menu" aria-label=${t('more')}>${s && html`<button onClick=${() => this.go('lobby')}><${Icon} name="user"/>${t('group')}</button><button onClick=${() => this.go('history')}><${Icon} name="history"/>${t('history')}</button>`}<button onClick=${() => this.go('settings')}><${Icon} name="settings"/>${t('settings')}</button></nav>`}
+      <div class="header-actions">${s && html`<button class="header-presence" aria-label=${`${t('group')}: ${t('onlineCount', onlineCount)}`} onClick=${() => this.go('lobby')}><span class=${`presence ${online ? 'online' : ''}`} aria-hidden="true"></span><span aria-hidden="true">${onlineCount}</span></button>`}<button class="quiet icon-button" aria-label=${t('more')} aria-expanded=${this.state.appMenu} onClick=${() => this.setState({ appMenu: !this.state.appMenu })}><${Icon} name="more"/></button></div></div>
+      ${this.state.appMenu && html`<nav class="app-menu" aria-label=${t('more')}>${s && html`<button onClick=${() => this.go('lobby')}><${Icon} name="user"/>${t('group')}</button>`}${(s || v.archive.length > 0) && html`<button onClick=${() => this.go('history')}><${Icon} name="history"/>${t('history')}</button>`}<button onClick=${() => this.go('settings')}><${Icon} name="settings"/>${t('settings')}</button></nav>`}
       </header>
       ${this.state.appMenu && html`<div class="scrim" aria-hidden="true" onClick=${() => this.setState({ appMenu: false })}></div>`}
       <main id="main">
         ${!v.ready ? html`<p role="status">${t('opening')}</p>` : html`
+          ${v.archiveNotice && html`<div class="banner info" role="status"><${Icon} name="history"/><span>${t('archivedNotice', v.archiveNotice.name, v.archiveNotice.unfinished)}</span><button class="quiet" onClick=${() => { store.dismissArchiveNotice(); this.go('history'); }}>${t('viewHistory')}</button><button class="quiet icon-button" aria-label=${t('dismiss')} onClick=${() => store.dismissArchiveNotice()}><${Icon} name="close"/></button></div>`}
           ${v.updating && html`<p class="sync-status" role="status">${t('updating')}</p>`}
           ${v.storageWarning && html`<div class="banner error" role="alert"><${Icon} name="alert"/><span><span class="sr-only">${t('error')}</span> ${v.storageWarning}</span></div>`}
           ${v.notice && html`<div class="banner error" role="alert"><${Icon} name="alert"/><span><span class="sr-only">${t('error')}</span> ${v.notice}</span><button class="quiet icon-button" aria-label=${t('dismiss')} onClick=${() => store.notice('')}><${Icon} name="close"/></button></div>`}
           ${v.role === 'member' && s && !v.hostOnline && html`<div class="banner warning" role="status"><${Icon} name="offline"/><span>${t('hostOffline')} ${t('queued', v.pending)}</span><button class="quiet" onClick=${() => store.startRoom()}>${t('retry')}</button></div>`}
           ${v.pending > 0 && v.hostOnline && html`<p class="sync-status" role="status">${t('sending', v.pending)}</p>`}
           ${!s && v.role === 'member' && html`<div class=${`banner ${v.unreachable ? 'error' : 'info'}`} role="status">${v.unreachable ? html`<${Icon} name="alert"/><span>${t('hostUnreachable', v.targetCode)}</span><button class="quiet" onClick=${() => store.startRoom()}>${t('retry')}</button>` : html`<span>${t('connecting')}</span>`}</div>`}
-          ${v.tab === 'settings' ? this.settings(v) : !s ? this.home(v) : this[v.tab]?.(v)}
+          ${v.tab === 'settings' ? this.settings(v) : v.tab === 'history' && (s || v.archive.length) ? this.history(v) : !s ? this.home(v) : this[v.tab]?.(v)}
         `}
       </main>
       ${s && html`<nav class="bottom-nav" aria-label="Main navigation">${tabs.map(([key, icon]) => html`<button key=${key} class=${v.tab === key ? 'active' : ''} aria-current=${v.tab === key ? 'page' : undefined} onClick=${() => this.go(key)}><span class="tab-icon"><${Icon} name=${icon}/>${key === 'picks' && count > 0 && html`<span class="tab-badge"><span class="sr-only">, </span>${count}</span>`}${key === 'order' && s.group.status === 'locked' && html`<span class="tab-badge"><${Icon} name="lock" size=${12}/><span class="sr-only">, ${t('locked')}</span></span>`}</span><span class="tab-label">${t(key)}</span></button>`)}</nav>`}

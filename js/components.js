@@ -37,6 +37,7 @@ const paths = {
   target: 'M5 12a7 7 0 1 0 14 0a7 7 0 1 0-14 0 M12 2v4 M12 18v4 M2 12h4 M18 12h4',
   dup: 'M8 8h12v12H8z M4 16V4h12',
   arrow: 'M5 12h14 M13 6l6 6-6 6',
+  install: 'M12 3v12 M7 10l5 5 5-5 M4 21h16',
 };
 export function Icon({ name, size = 24 }) {
   return html`<svg class="icon" viewBox="0 0 24 24" width=${size} height=${size} fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true"><path d=${paths[name] || paths.menu}/></svg>`;

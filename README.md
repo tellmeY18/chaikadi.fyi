@@ -9,9 +9,9 @@ runtime CDN dependencies.
 Preact + htm, vendored locally; state, persistence and networking are plain ES
 modules independent of the UI framework.
 
-The visual source of truth is [DESIGN.md](DESIGN.md): a black-and-white wireframe
-in Atkinson Hyperlegible Mono, semantic crayon colour, and paper receipts in
-Courier Prime. The four bottom tabs are
+All branding comes from [brand.letsimpl.fyi](https://brand.letsimpl.fyi), vendored
+in `brand/` (`npm run brand` to update). [DESIGN.md](DESIGN.md) records only the
+product-specific decisions: sessions, UPI payments and installing. The four bottom tabs are
 Menu, My picks, Order and Costs. Group, History and Settings are in the app bar
 menu; the online count also opens Group. Two themes, Light (white) and Dark
 (pitch black); the first run follows the device.
@@ -102,7 +102,7 @@ still point at the production domain. Use the actual custom domain for group tes
 
 Pushes to `main` deploy automatically through `.github/workflows/deploy.yml`:
 unit tests run first, then only the runtime files (`index.html`, `styles.css`,
-`manifest.json`, `sw.js`, `_headers`, `js/`, `vendor/`, `fonts/`, `icons/`) are
+`manifest.json`, `sw.js`, `_headers`, `js/`, `vendor/`, `brand/`, `icons/`) are
 uploaded to the Pages project `chaikadi`. Add two repository secrets once:
 `CLOUDFLARE_API_TOKEN` (a token with **Cloudflare Pages: Edit**) and
 `CLOUDFLARE_ACCOUNT_ID`. Pull requests run the tests only.
@@ -412,7 +412,7 @@ chaikadi.fyi/
 ├── LICENSE                    AGPL-3.0
 ├── _headers                   Cloudflare cache / response headers
 ├── TEST_PLAN.md               laptop + iPhone + Android acceptance plan
-├── fonts/
+├── brand/                  # vendored letsimpl.fyi brand: tokens, CSS, fonts
 │   ├── atkinson-hyperlegible-mono-latin.woff2
 │   ├── courier-prime-400-latin.woff2
 │   ├── courier-prime-700-latin.woff2
@@ -508,5 +508,5 @@ The files in `vendor/` are third-party libraries under their own licenses
 (MIT and Apache-2.0, see `vendor/README.md` and the `*.LICENSE` files there).
 Both are compatible with AGPL-3.0 when combined in this work.
 
-Fonts in `fonts/` are separately licensed under SIL OFL 1.1. Their complete
+Fonts in `brand/fonts/` are separately licensed under SIL OFL 1.1. Their complete
 copyright and license notices are distributed alongside the local WOFF2 files.

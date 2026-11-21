@@ -8,7 +8,7 @@ const MAX_MESSAGE = 4 * 1024 * 1024;
 const ID_RECLAIM_MS = 120000;
 // peer.reconnect() can hang without any event (peerjs#1289): replace the peer.
 const RECONNECT_WATCHDOG_MS = 10000;
-export const PUBLIC_INTENTS = new Set(['member.rename', 'member.remove', 'orderer.set', 'menu.upsert', 'item.price',
+export const PUBLIC_INTENTS = new Set(['member.rename', 'member.upi', 'member.remove', 'orderer.set', 'menu.upsert', 'item.price',
   'menu.delete', 'menu.create', 'menu.rename', 'menu.remove', 'menu.activate', 'menu.source', 'pick.set', 'order.lock', 'order.unlock', 'bill.set', 'payment.set',
   'round.finish', 'history.payment', 'group.currency']);
 

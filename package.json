@@ -4,5 +4,9 @@
   "license": "AGPL-3.0-only",
   "repository": "github:tellmeY18/chaikadi.fyi",
   "type": "module",
-  "scripts": { "test": "node --test tests/*.test.js" }
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "brand": "node tools/sync-brand.mjs",
+    "brand:check": "node tools/sync-brand.mjs --check"
+  }
 }

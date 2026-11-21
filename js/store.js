@@ -1,5 +1,6 @@
-import { APP_VERSION, relayServers, DEFAULT_CONFIG, PRESETS, PROTOCOL_VERSION, uid, roomCode, validCode, validateConfig, funName } from './config.js';
-import { newGroup, reduce, Persistence, migrate } from './state.js';
+import { APP_VERSION, SESSION_TTL_MS, relayServers, DEFAULT_CONFIG, PRESETS, PROTOCOL_VERSION, uid, roomCode, validCode, validateConfig, funName } from './config.js';
+import { newGroup, reduce, Persistence, migrate, archiveSession, addArchive, isStale } from './state.js';
+import { validUpi, normalizeUpi } from './upi.js';
 import { Network, PUBLIC_INTENTS } from './p2p.js';
 import { orderableItems } from './data.js';
 import { log, setVerbose } from './netlog.js';
@@ -14,7 +15,10 @@ export class AppStore {
   constructor() {
     this.listeners = new Set(); this.queue = Promise.resolve();
     this.data = { identity: { id: uid(), token: uid(), name: '' }, config: copy(DEFAULT_CONFIG),
-      state: null, role: null, targetCode: '', outbox: [], credentials: {}, revoked: [], preferences: { theme: 'auto', installDismissed: false } };
+      state: null, role: null, targetCode: '', outbox: [], credentials: {}, revoked: [], preferences: { theme: 'auto', installDismissed: false },
+      // Persistent across sessions: who you are (identity.name, profile.upi) and finished sessions (archive).
+      // Everything else is the current session and expires after SESSION_TTL_MS idle.
+      profile: { upi: '' }, archive: [], archiveNotice: null, lastActive: 0 };
     this.ui = { tab: 'lobby', status: 'Ready', notice: '', storageWarning: '', unreachable: false,
       hostOnline: false, suggested: null, shuffling: false, ready: false, blocked: false };
     this.db = new Persistence(message => { this.ui.storageWarning = message; this.emit(); });
@@ -35,7 +39,7 @@ export class AppStore {
     }
     return { ...this.ui, state, identity: this.data.identity, role: this.data.role,
       config: this.data.config, pending: this.data.outbox.length, targetCode: this.data.targetCode,
-      roomReady: this.network.roomReady, preferences: this.data.preferences || { theme: 'auto', installDismissed: false } };
+      roomReady: this.network.roomReady, profile: this.data.profile, archive: this.data.archive, archiveNotice: this.data.archiveNotice, preferences: this.data.preferences || { theme: 'auto', installDismissed: false } };
   }
   serial(fn) {
     const result = this.queue.catch(() => {}).then(fn);
@@ -67,6 +71,10 @@ export class AppStore {
     const saved = await this.db.load();
     if (saved?.identity && saved.config && (!saved.state || saved.state.schema === 1)) this.data = saved;
     if (!this.data.identity.name) this.data.identity.name = funName();
+    this.data.profile = { upi: '', ...this.data.profile }; this.data.archive ||= [];
+    // Every open starts fresh: a session left idle for over an hour is archived to History first.
+    await this.expireIfStale(Date.now(), this.data.lastActive || this.db.lastSavedAt);
+    this.data.lastActive = Date.now();
     setVerbose(this.data.preferences?.dev?.verbose);
     log('info', `app start ${APP_VERSION}`, { browser: globalThis.navigator?.userAgent, webrtc: typeof globalThis.RTCPeerConnection === 'function', online: globalThis.navigator?.onLine });
     this.data.state = migrate(this.data.state);
@@ -87,6 +95,7 @@ export class AppStore {
     // Groups saved before the basic menu shipped get it once, if they have no menus.
     if (this.data.role === 'host' && this.data.state && !this.data.state.menus.length) await this.presets().catch(() => {});
     if (this.data.role && this.data.targetCode) this.startRoom();
+    this.syncProfile();
     this.heartbeat = setInterval(() => this.tick(), 5000);
     // Invite link with no saved group: join straight away with the prefilled
     // name. Zero taps; the name can be changed later in Settings.
@@ -94,8 +103,56 @@ export class AppStore {
       await this.join(code, this.data.identity.name).catch(error => this.notice(error.message));
     }
   }
+  // Any real activity keeps the session alive. Saved at most every 30 s.
+  touch() {
+    const now = Date.now();
+    if (!this.data.state && !this.data.role) return;
+    this.data.lastActive = now;
+    if (now - (this.lastTouchSaved || 0) > 30000) { this.lastTouchSaved = now; this.persist().catch(() => {}); }
+  }
+  async expireIfStale(now = Date.now(), last = this.data.lastActive) {
+    if (!this.data.state && !this.data.role) return false;
+    if (!isStale(last, now, SESSION_TTL_MS)) return false;
+    const entry = archiveSession(this.data.state, { endedAt: last, archivedAt: now });
+    this.data.archive = addArchive(this.data.archive, entry);
+    this.data.archiveNotice = entry ? { id: entry.id, name: entry.name, rounds: entry.rounds.length, unfinished: entry.unfinished } : null;
+    log('info', 'idle session archived', { archived: !!entry });
+    await this.reset();
+    return true;
+  }
+  // Install: Chrome hands over a one-shot prompt event; keep it for a button.
+  async promptInstall() {
+    const event = this.ui.installEvent;
+    if (!event) return 'unavailable';
+    this.ui.installEvent = null; this.emit();
+    event.prompt();
+    const { outcome } = await event.userChoice;
+    if (outcome === 'accepted') this.toast('Installed. Open Chaikadi from your home screen.');
+    else await this.snoozeInstall();
+    return outcome;
+  }
+  snoozeInstall() { return this.preferences({ installSnoozedUntil: Date.now() + 14 * 24 * 60 * 60 * 1000 }); }
+  dismissArchiveNotice() { this.data.archiveNotice = null; this.emit(); return this.persist(); }
+  // Name and UPI ID live on this device and follow you into every group.
+  async saveProfile({ name, upi }) {
+    name = String(name ?? '').trim(); upi = String(upi ?? '').trim();
+    if (!name || name.length > 30) throw new Error('Enter a display name of 1–30 characters.');
+    if (upi && !validUpi(upi)) throw new Error('Enter a UPI ID like name@bank.');
+    this.data.identity.name = name; this.data.profile = { ...this.data.profile, upi: upi ? normalizeUpi(upi) : '' };
+    await this.persist(); this.emit();
+    const me = this.view().state?.members.find(m => m.id === this.data.identity.id);
+    if (me && me.name !== name) await this.dispatch('member.rename', { name });
+    await this.syncProfile();
+  }
+  async syncProfile() {
+    const state = this.view().state;
+    if (!state || this.ui.blocked) return;
+    const me = state.members.find(m => m.id === this.data.identity.id);
+    if (!me || (me.upi || '') === (this.data.profile.upi || '')) return;
+    await this.dispatch('member.upi', { upi: this.data.profile.upi || '' }).catch(() => {});
+  }
   rerollName() { this.data.identity.name = funName(); this.emit(); return this.data.identity.name; }
-  setTab(tab) { this.ui.tab = tab; this.emit(); }
+  setTab(tab) { this.ui.tab = tab; this.touch(); this.emit(); }
   resetConnection() {
     if (this.data.state) return;
     this.network.stop(); this.data.targetCode = ''; this.data.role = null;
@@ -118,6 +175,7 @@ export class AppStore {
     if (starter) await this.presets();
     this.startRoom();
     this.emit();
+    this.syncProfile();
   }
   async join(code, name) {
     code = code.trim().toUpperCase(); name = name.trim();
@@ -151,6 +209,7 @@ export class AppStore {
   dispatch(type, payload) {
     return this.serial(async () => {
       if (this.ui.blocked) throw new Error('You were removed from this group. Leave it in Settings to start again.');
+      this.touch();
       if (!PUBLIC_INTENTS.has(type)) throw new Error('Unsupported action.');
       const intent = this.intent(type, typeof payload === 'function' ? payload(this.view().state) : payload);
       if (this.data.role === 'host') await this.applyHost(intent);
@@ -311,7 +370,8 @@ export class AppStore {
       this.network.code = incoming.group.roomCode;
       this.data.outbox = this.data.outbox.filter(i => i.id !== msg.payload.ack && !incoming.receipts.includes(i.id));
       this.ui.hostOnline = true; this.ui.unreachable = false; this.ui.status = 'Connected to host'; log('info', 'synced with host', { version: incoming.group.version });
-      this.syncName(); await this.persist();
+      this.syncName(); this.touch(); await this.persist();
+      this.syncProfile();
       if (firstSync) this.ui.tab = incoming.menu.length ? 'picks' : 'menu'; // joiners land where the action is
       this.emit();
       if (msg.payload.error) this.notice(`A queued change was not applied: ${msg.payload.error}`);
@@ -340,13 +400,21 @@ export class AppStore {
     }
     this.flush();
   }
-  background() { this.hidden = true; log('debug', 'app hidden'); }
+  background() {
+    this.hidden = true; log('debug', 'app hidden');
+    if (this.data.state || this.data.role) { this.data.lastActive = Date.now(); this.persist().catch(() => {}); }
+  }
   foreground() {
     this.hidden = false; this.resumedAt = Date.now(); log('debug', 'app visible');
-    this.tick(); this.network.resume();
-    for (const link of this.network.links.values()) {
-      if (this.data.role === 'member') this.network.send(link, { type: 'sync', payload: {}, senderId: this.data.identity.id, version: this.data.state?.group.version || 0 });
-    }
+    // Coming back after more than an hour is a fresh start, like a new open.
+    this.serial(async () => {
+      if (await this.expireIfStale()) { await this.persist(); this.emit(); return; }
+      this.touch();
+      this.tick(); this.network.resume();
+      for (const link of this.network.links.values()) {
+        if (this.data.role === 'member') this.network.send(link, { type: 'sync', payload: {}, senderId: this.data.identity.id, version: this.data.state?.group.version || 0 });
+      }
+    });
   }
   uniqueMenuName(base) {
     const taken = new Set(this.view().state.menus.map(m => m.name.normalize('NFKC').toLowerCase()));
@@ -460,10 +528,17 @@ export class AppStore {
       await this.applyHost(this.intent('group.code', { code }));
     });
   }
+  // Leaving keeps what was entered: the session goes to History first.
   async leave() {
+    const now = Date.now();
+    this.data.archive = addArchive(this.data.archive, archiveSession(this.data.state, { endedAt: this.data.lastActive || now, archivedAt: now }));
+    this.data.archiveNotice = null;
+    await this.reset();
+  }
+  async reset() {
     this.network.stop();
     Object.assign(this.data, { state: null, role: null, targetCode: '', outbox: [], credentials: {}, revoked: [], removed: false });
-    Object.assign(this.ui, { hostOnline: false, tab: 'lobby', blocked: false, unreachable: false, notice: '', status: 'Ready' });
+    Object.assign(this.ui, { hostOnline: false, tab: 'lobby', blocked: false, unreachable: false, notice: '', status: 'Ready', suggested: null });
     await this.persist(); this.emit();
   }
   backup() { return JSON.stringify({ app: 'chaikadi.fyi', exportedAt: new Date().toISOString(), data: this.data }, null, 2); }
