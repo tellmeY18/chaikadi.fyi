@@ -104,6 +104,7 @@ const en = {
   orderNo: 'Orderer', groupLabel: 'Group', estimatedShort: 'Estimated', youLabel: 'You',
   // UPI payments
   upiId: 'UPI ID', upiHint: 'Optional. Shared with people in your group so they can pay you when you place the order. Stays on this phone otherwise.',
+  upiHome: 'So friends can pay you by UPI when you place the order. Saved on this phone. You can change it in Settings.',
   upiPlaceholder: 'name@bank', upiClear: 'Leave empty to remove it.', profileTitle: 'You', profileSaved: 'Saved.',
   pay: 'Pay', payTitle: 'Pay with UPI', payTo: name => `Pay ${name}`, payUpiId: 'UPI ID', payApp: 'Pay with UPI app', payOtherApps: 'Or open a specific app',
   payCopy: 'Copy UPI ID', payCopied: 'UPI ID copied.', payShowQR: 'Show UPI QR', payHideQR: 'Hide UPI QR',

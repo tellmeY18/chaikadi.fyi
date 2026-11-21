@@ -182,6 +182,11 @@ class App extends Component {
   nameField(v) {
     return html`<label>${t('yourName')}<span class="with-dice"><input key=${v.identity.name} name="name" required maxlength="30" defaultValue=${v.identity.name} autocomplete="nickname"/><button type="button" class="icon-button" aria-label=${t('randomName')} onClick=${() => this.props.store.rerollName()}><${Icon} name="dice"/></button></span></label>`;
   }
+  upiField(v) {
+    return html`<label>${t('upiId')} <span class="muted">(${t('optional')})</span><input key=${v.profile.upi} name="upi" inputmode="email" autocapitalize="none" autocomplete="off" spellcheck=${false} maxlength="100" placeholder=${t('upiPlaceholder')} defaultValue=${v.profile.upi}/><small>${t('upiHome')}</small></label>`;
+  }
+  // Name and UPI ID are remembered on this device, so asking once is enough.
+  rememberProfile(f) { return this.props.store.saveProfile({ name: f.name, upi: f.upi }); }
   home(v) {
     const store = this.props.store;
     const join = this.state.homeMode === 'join' || !!v.targetCode || v.role === 'member';
@@ -189,22 +194,24 @@ class App extends Component {
       this.code = code;
       if (validCode(code) && code !== this.lastAutoCode) {
         this.lastAutoCode = code;
-        this.run(() => store.join(code, this.homeForm?.elements.name?.value || v.identity.name));
+        this.run(async () => { const el = this.homeForm?.elements; await this.rememberProfile({ name: el?.name?.value || v.identity.name, upi: el?.upi?.value ?? v.profile.upi }); await store.join(code, el?.name?.value || v.identity.name); });
       }
     };
     if (join) return html`<section class="home">
       <button type="button" class="back" onClick=${() => { this.run(() => store.resetConnection()); this.setState({ homeMode: 'create' }); }}><${Icon} name="back"/>${t('back')}</button>
       ${heading(t('join'))}
-      <form ref=${el => this.homeForm = el} class="stack" onSubmit=${e => { e.preventDefault(); this.run(() => store.join(this.code || v.targetCode, fields(e).name)); }}>
+      <form ref=${el => this.homeForm = el} class="stack" onSubmit=${e => { e.preventDefault(); const f = fields(e); this.run(async () => { await this.rememberProfile(f); await store.join(this.code || v.targetCode, f.name); }); }}>
         <${CodeInput} value=${v.targetCode} onInput=${joinNow}/>
         ${v.role === 'member' && v.targetCode && html`<p role="status">${t('joining', v.targetCode)}</p>`}
         ${this.nameField(v)}
+        ${this.upiField(v)}
         <button class="primary">${t('joinAction')}</button>
         <button type="button" class="outbound" onClick=${() => this.open({ kind: 'roomScan' })}><${Icon} name="qr"/>${t('scanQR')}</button>
       </form></section>`;
     return html`<section class="home">${heading(t('tagline'))}
-      <form class="stack" onSubmit=${e => { e.preventDefault(); const f = fields(e); this.run(() => store.create(funGroup(), f.name)); }}>
+      <form class="stack" onSubmit=${e => { e.preventDefault(); const f = fields(e); this.run(async () => { await this.rememberProfile(f); await store.create(funGroup(), f.name); }); }}>
         ${this.nameField(v)}
+        ${this.upiField(v)}
         <button class="primary">${t('create')}</button>
         <button type="button" onClick=${() => this.setState({ homeMode: 'join' })}>${t('join')}</button>
       </form>
