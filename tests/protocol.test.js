@@ -33,7 +33,7 @@ test('host authenticates reconnect token and refuses identity spoofing', async (
 });
 test('clashing names are auto-suffixed; a new group ships the basic menu', async () => {
   const app = await host();
-  assert.deepEqual(app.data.state.menu.map(i => [i.name, i.price]), [['Tea', 0], ['Coffee', 0], ['Black Tea', 0], ['Black Coffee', 0], ['Lime Tea', 0], ['Snack', 0]]);
+  assert.deepEqual(app.data.state.menu.map(i => [i.name, i.price]), [['Tea', 0], ['Coffee', 0], ['Black Tea', 0], ['Black Coffee', 0], ['Lime Tea', 0]]);
   const a = await join(app, uid(), uid(), 'Sunny Otter'), b = await join(app, uid(), uid(), 'sunny otter');
   assert.ok(a.link.memberId && b.link.memberId);
   assert.deepEqual(app.data.state.members.map(m => m.name).slice(1), ['Sunny Otter', 'sunny otter 2']);
@@ -103,4 +103,21 @@ test('old clients cannot drop menu IDs when joining a multi-menu host', async ()
   assert.equal(app.data.state.members.length, 1);
   assert.equal(app.sent.at(-1).message.type, 'rejected');
   assert.match(app.sent.at(-1).message.payload.message, /Update Chaikadi/);
+});
+test('a stall menu saves on the device with its prices and comes back as a new group menu', async () => {
+  const app = await host();
+  const menuId = app.data.state.activeMenuId;
+  await app.quickAdd('Samosa 15');
+  await app.saveMenuLocally(menuId);
+  await app.saveMenuLocally(menuId);
+  assert.equal(app.data.profile.saved.length, 1, 'same name replaces');
+  const saved = app.data.profile.saved[0];
+  assert.equal(saved.name, 'Basic menu');
+  assert.deepEqual(saved.items.find(i => i.name === 'Samosa'), { name: 'Samosa', category: 'Snacks', price: 1500 });
+  const id = await app.useSavedMenu(saved.id);
+  assert.ok(id && id !== menuId);
+  assert.equal(app.data.state.menus.length, 3);
+  assert.equal(app.data.state.menu.filter(i => i.menuId === id).find(i => i.name === 'Samosa').price, 1500);
+  await app.deleteSavedMenu(saved.id);
+  assert.equal(app.data.profile.saved.length, 0);
 });

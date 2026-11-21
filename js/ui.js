@@ -321,6 +321,7 @@ class App extends Component {
     return html`<section>${heading(t('picks'))}
       ${locked && html`<p class="banner warning"><${Icon} name="lock"/>${t('lockedPicks')}</p>`}
       ${all.length > 0 && html`<button class="quiet surprise" disabled=${locked} onClick=${() => { this.open({ kind: 'shuffle' }); this.props.store.suggest(matchMedia('(prefers-reduced-motion: reduce)').matches); }}><${Icon} name="dice"/>${t('undecided')}</button>`}
+      ${activeMenu(s) && html`<form class="quick-add" key=${`quick-${s.group.version}`} onSubmit=${e => { e.preventDefault(); const form = e.currentTarget, text = fields(e).item; this.run(async () => { if (await this.props.store.quickAdd(text)) { form.reset(); this.props.store.toast(t('quickAdded')); } }); }}><label class="sr-only" for="quick-item">${t('quickAddLabel')}</label><input id="quick-item" name="item" required maxlength="70" autocomplete="off" enterkeyhint="done" placeholder=${t('quickAddPlaceholder')} disabled=${locked}/><button disabled=${locked}><${Icon} name="plus"/>${t('quickAdd')}</button></form>`}
       ${all.length > 0 && this.search(items.length)}
       ${all.length > 0 && !items.length && html`<p>${t('noMatches')}</p>`}
       ${!all.length && html`<${Empty} text=${t('emptyMenu')} icon="menu"><button onClick=${() => this.go('menu')}>${t('menu')}</button><//>`}
@@ -357,7 +358,8 @@ class App extends Component {
     const s = v.state, totals = costs(s), orderer = s.group.ordererId === v.identity.id, locked = s.group.status === 'locked', c = s.group.currency;
     const pricer = orderer || s.group.hostId === v.identity.id;
     const ordered = activeItems(s).filter(item => s.picks.some(p => p.itemId === item.id));
-    const pricesOpen = pricer && ordered.length > 0 && (!locked || s.round.actualTotal === null);
+    const priceRows = pricer ? ordered : ordered.filter(item => item.price === 0);
+    const pricesOpen = priceRows.length > 0 && (!locked || s.round.actualTotal === null);
     const ordererMember = s.members.find(m => m.id === s.group.ordererId);
     const payment = person => {
       const paid = !!s.round.payments[person.id];
@@ -370,9 +372,9 @@ class App extends Component {
     return html`<section>${heading(t('costs'))}
       ${this.upiScanCard(v)}
       ${orderer && locked && upiCurrency(c) && !ordererMember?.upi && html`<div class="banner info"><${Icon} name="rupee"/><span>${t('payAddOwn')}</span><button class="quiet" onClick=${() => this.go('settings')}>${t('payAddOwnAction')}</button></div>`}
-      ${pricesOpen && html`<form class="stack price-form" key=${`prices-${s.round.id}-${s.group.version}`} onSubmit=${e => { e.preventDefault(); const f = fields(e); this.run(() => this.action('item.price', { prices: ordered.map(item => ({ id: item.id, price: cents(f[`price-${item.id}`]) })) }, t('pricesSaved'))); }}>
-        <h2>${t('itemPrices')}</h2><p class="muted">${t('itemPricesHelp')}</p>
-        ${ordered.map(item => html`<label key=${item.id}>${item.name}<input name=${`price-${item.id}`} type="number" inputmode="decimal" min="0" max="1000000" step="0.01" placeholder="0" defaultValue=${item.price ? item.price / 100 : ''}/></label>`)}
+      ${pricesOpen && html`<form class="stack price-form" key=${`prices-${s.round.id}-${s.group.version}`} onSubmit=${e => { e.preventDefault(); const f = fields(e); this.run(() => this.action('item.price', { prices: priceRows.map(item => ({ id: item.id, price: cents(f[`price-${item.id}`]) })) }, t('pricesSaved'))); }}>
+        <h2>${t(pricer ? 'itemPrices' : 'itemPricesMissing')}</h2><p class="muted">${t(pricer ? 'itemPricesHelp' : 'itemPricesMissingHelp')}</p>
+        ${priceRows.map(item => html`<label key=${item.id}>${item.name}<input name=${`price-${item.id}`} type="number" inputmode="decimal" min="0" max="1000000" step="0.01" placeholder="0" defaultValue=${item.price ? item.price / 100 : ''}/></label>`)}
         <button>${t('savePrices')}</button>
       </form>`}
       ${orderer && html`<form class="stack bill-form" key=${s.round.id} onSubmit=${e => { e.preventDefault(); const f = fields(e); this.run(() => this.action('bill.set', { actualTotal: String(f.bill || '').trim() === '' ? null : cents(f.bill), splitMode: f.split }, t(String(f.bill || '').trim() === '' ? 'billFromMenu' : 'billSaved'))); }}>
@@ -491,7 +493,10 @@ class App extends Component {
       <li><button disabled=${p.locked} onClick=${() => this.open({ kind: 'item', menuId: p.menuId })}><${Icon} name="plus"/>${t('itemShort')}</button></li>
       <li><button disabled=${p.locked} onClick=${() => this.open({ kind: 'scan', menuId: p.menuId })}><${Icon} name="camera"/>${t('scanMenu')}</button></li>
       <li><button onClick=${() => this.open({ kind: 'library' })}><${Icon} name="book"/>${t('library')}</button></li>
+      ${(v.profile.saved || []).length > 0 && html`<li><button onClick=${() => this.open({ kind: 'saved' })}><${Icon} name="book"/>${t('savedMenus')}</button></li>`}
+      ${p.menuId && s.menu.some(i => i.menuId === p.menuId) && html`<li><button onClick=${() => { close(); this.run(async () => { await store.saveMenuLocally(p.menuId); store.toast(t('savedOnDevice')); }); }}><${Icon} name="check"/>${t('saveOnDevice')}</button></li>`}
       <li><button onClick=${() => this.open({ kind: 'menuName' })}><${Icon} name="menu"/>${t('newMenu')}</button></li></ul><//>`;
+    if (p.kind === 'saved') return html`<${Sheet} title=${t('savedMenus')} onClose=${close}>${error}<p class="muted">${t('savedHint')}</p><ul class="sheet-list">${(v.profile.saved || []).map(m => html`<li key=${m.id}><div class="menu-row">${leader(m.name, t('itemCount', m.items.length))}</div><div class="actions"><button class="primary" onClick=${() => submit(async () => { const id = await store.useSavedMenu(m.id); if (id) this.setState({ viewMenu: id, editing: false }); return !!id; })}>${t('useSaved')}</button><button class="danger" onClick=${() => this.confirm(t('deleteSavedConfirm', m.name), t('delete'), () => store.deleteSavedMenu(m.id))}><${Icon} name="trash"/>${t('delete')}</button></div></li>`)}</ul><//>`;
     if (p.kind === 'member') {
       const m = s.members.find(x => x.id === p.member.id);
       if (!m) return null;
@@ -551,7 +556,7 @@ class App extends Component {
     if (p.kind === 'note') {
       const item = s.menu.find(i => i.id === p.item.id), pick = s.picks.find(pick => pick.memberId === v.identity.id && pick.itemId === p.item.id);
       const locked = s.group.status !== 'open' || !item || item.menuId !== s.activeMenuId;
-      return html`<${Sheet} title=${p.item.name} onClose=${close}>${error}<form class="stack" onSubmit=${e => { e.preventDefault(); const note = fields(e).note; submit(async () => { if (!pick && !await store.changePick(p.item.id, 1)) return false; const ok = await store.saveNote(p.item.id, note); if (ok) store.toast(t('noteSaved')); return ok; }); }}><label>${t('itemNote')}<textarea name="note" rows="3" maxlength="160" defaultValue=${pick?.note || ''} placeholder=${p.item.name === 'Snack' ? t('snackPlaceholder') : t('notePlaceholder')} disabled=${locked} autofocus></textarea></label>${!pick && html`<p class="muted">${t('noteAddsItem')}</p>`}<button class="primary" disabled=${locked}>${t('saveNote')}</button></form><//>`;
+      return html`<${Sheet} title=${p.item.name} onClose=${close}>${error}<form class="stack" onSubmit=${e => { e.preventDefault(); const note = fields(e).note; submit(async () => { if (!pick && !await store.changePick(p.item.id, 1)) return false; const ok = await store.saveNote(p.item.id, note); if (ok) store.toast(t('noteSaved')); return ok; }); }}><label>${t('itemNote')}<textarea name="note" rows="3" maxlength="160" defaultValue=${pick?.note || ''} placeholder=${t('notePlaceholder')} disabled=${locked} autofocus></textarea></label>${!pick && html`<p class="muted">${t('noteAddsItem')}</p>`}<button class="primary" disabled=${locked}>${t('saveNote')}</button></form><//>`;
     }
     return null;
   }

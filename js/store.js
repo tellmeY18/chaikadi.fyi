@@ -1,3 +1,4 @@
+import { parseQuickItem } from './ingest.js';
 import { APP_VERSION, SESSION_TTL_MS, relayServers, DEFAULT_CONFIG, PRESETS, PROTOCOL_VERSION, uid, roomCode, validCode, validateConfig, funName } from './config.js';
 import { newGroup, reduce, Persistence, migrate, archiveSession, addArchive, isStale } from './state.js';
 import { validUpi, normalizeUpi } from './upi.js';
@@ -507,6 +508,40 @@ export class AppStore {
   // The basic menu: generic items at price 0, most-ordered first.
   presets(menuId) {
     return this.importMenu(PRESETS.map(([name, category, popularity]) => ({ name, category, price: 0, popularity })), { menuId, title: 'Basic menu', skipExisting: true });
+  }
+  // Menus kept on this device only (never sent anywhere), e.g. one per stall. Prices are kept
+  // because a saved menu belongs to one place. Saving under an existing name replaces it.
+  async saveMenuLocally(menuId) {
+    const state = this.view().state, menu = state.menus.find(m => m.id === menuId);
+    const items = state.menu.filter(i => i.menuId === menuId).map(({ name, category, price }) => ({ name, category, price }));
+    if (!menu || !items.length) throw new Error('Add some items before saving this menu.');
+    const key = menu.name.normalize('NFKC').toLowerCase();
+    const saved = (this.data.profile.saved || []).filter(m => m.name.normalize('NFKC').toLowerCase() !== key);
+    if (saved.length >= 20) throw new Error('This device keeps up to 20 saved menus. Delete one first.');
+    this.data.profile = { ...this.data.profile, saved: [{ id: uid(), name: menu.name, items }, ...saved] };
+    await this.persist(); this.emit();
+  }
+  async deleteSavedMenu(id) {
+    this.data.profile = { ...this.data.profile, saved: (this.data.profile.saved || []).filter(m => m.id !== id) };
+    await this.persist(); this.emit();
+  }
+  // Adds a saved menu to the group as a new menu (the group can then use it for the round).
+  async useSavedMenu(id) {
+    const saved = (this.data.profile.saved || []).find(m => m.id === id);
+    if (!saved) throw new Error('That saved menu is gone.');
+    return (await this.importMenu(saved.items.map((item, n) => ({ ...item, popularity: Math.max(1, 100 - n) })), { title: saved.name })).menuId;
+  }
+  // One line adds the item to the round's menu for everyone and picks one for you.
+  async quickAdd(text) {
+    const item = parseQuickItem(text);
+    if (!item) throw new Error('Type an item name, like Samosa 15.');
+    const state = this.view().state;
+    const menuId = state.activeMenuId;
+    if (!menuId) throw new Error('Choose a menu first.');
+    const same = state.menu.find(i => i.menuId === menuId && i.name.normalize('NFKC').toLowerCase() === item.name.normalize('NFKC').toLowerCase());
+    const id = same?.id || uid();
+    if (!same && !await this.dispatch('menu.upsert', { id, menuId, ...item })) return false;
+    return this.changePick(id, 1);
   }
   // Wipe this device's group (menus, picks, history, members) and host a
   // brand-new one with the basic menu. Identity and preferences are kept.

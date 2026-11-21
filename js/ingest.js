@@ -47,6 +47,18 @@ const titleCase = s => (s === s.toUpperCase() && /[A-Z]{3}/.test(s))
   ? s.toLowerCase().replace(/\b\p{L}/gu, c => c.toUpperCase())
   : s;
 
+// "Samosa 15", "Veg puff - Rs 25", "Masala chai". The price is optional (0 means
+// "set it in Costs"); the category is guessed, unknown names default to Snacks.
+const QUICK = /^(.*?[A-Za-z\u0080-\uFFFF].*?)[\s:\-–=]*(?:₹|rs\.?|inr)?\s*(\d{1,6}(?:[.,]\d{1,2})?)\s*(?:\/-)?$/i;
+export function parseQuickItem(raw) {
+  const text = String(raw || '').trim();
+  const m = QUICK.exec(text);
+  const clean = titleCase(cleanName(m ? m[1] : text)).slice(0, 60), name = clean.charAt(0).toUpperCase() + clean.slice(1);
+  if (!/[A-Za-z\u0080-\uFFFF]/.test(name)) return null;
+  const guess = guessCategory(name);
+  return { name, price: m ? toMinor(m[2]) : 0, category: guess === 'Other' ? 'Snacks' : guess };
+}
+
 // Pure: OCR text -> candidate items. Exported for tests and other engines.
 export function parseMenuText(text) {
   const lines = String(text || '').split(/\r?\n/).map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);

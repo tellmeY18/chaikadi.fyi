@@ -301,12 +301,14 @@ export function reduce(state, intent) {
     case 'item.price': {
       // Starter items cost 0: the host (or orderer) declares prices, also
       // while the order is locked, until the bill is entered.
-      assert(host || orderer, 'Only the host or orderer can set prices.');
+      // Anyone may fill in a missing (0) price; only the host or orderer can change a set one.
       assert(Array.isArray(p.prices) && p.prices.length <= 200, 'Invalid prices.');
       assert(s.group.status === 'open' || s.round.actualTotal === null, 'Unlock the order to change prices after the bill is entered.');
       for (const entry of p.prices) {
         const item = s.menu.find(i => i.id === entry?.id && i.menuId === s.activeMenuId);
         assert(item && money(entry.price), 'Enter a valid price.');
+        if (item.price === entry.price) continue;
+        assert(host || orderer || item.price === 0, 'Only the host or orderer can change a price that is already set.');
         item.price = entry.price;
       }
       break;

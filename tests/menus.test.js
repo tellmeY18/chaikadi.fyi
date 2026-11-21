@@ -93,7 +93,8 @@ test('host declares prices while locked, until the bill is entered', () => {
   s = act(s, 'member.join', { id: 'guest', name: 'Guest' });
   s = act(s, 'pick.set', { itemId: 'tea', qty: 2, note: '' }, 'guest');
   s = act(s, 'order.lock', {});
-  assert.throws(() => act(s, 'item.price', { prices: [{ id: 'tea', price: 1500 }] }, 'guest'), /host or orderer/);
+  s = act(s, 'item.price', { prices: [{ id: 'tea', price: 1200 }] }, 'guest');
+  assert.throws(() => act(s, 'item.price', { prices: [{ id: 'tea', price: 1500 }] }, 'guest'), /already set/);
   s = act(s, 'item.price', { prices: [{ id: 'tea', price: 1500 }] });
   assert.equal(costs(s).estimatedTotal, 3000);
   s = act(s, 'bill.set', { actualTotal: 3000, splitMode: 'equal' });
@@ -107,6 +108,13 @@ test('a new session wipes the group and starts again with the basic menu', async
   await app.newSession('Fresh');
   const s = app.data.state;
   assert.notEqual(s.group.id, old.group.id); assert.equal(s.group.name, 'Fresh');
-  assert.equal(s.menus.length, 1); assert.equal(s.menu.length, 6);
+  assert.equal(s.menus.length, 1); assert.equal(s.menu.length, 5);
   assert.ok(s.menu.every(i => i.price === 0)); assert.equal(s.history.length, 0);
+});
+test('quick-add text: optional price, guessed category', async () => {
+  const { parseQuickItem } = await import('../js/ingest.js');
+  assert.deepEqual(parseQuickItem('Samosa 15'), { name: 'Samosa', price: 1500, category: 'Snacks' });
+  assert.deepEqual(parseQuickItem('veg puff - Rs 25/-'), { name: 'Veg puff', price: 2500, category: 'Snacks' });
+  assert.deepEqual(parseQuickItem('masala chai'), { name: 'Masala chai', price: 0, category: 'Tea' });
+  assert.equal(parseQuickItem('  42 '), null);
 });

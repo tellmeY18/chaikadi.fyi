@@ -59,6 +59,9 @@ legend { padding: 0; margin-bottom: 8px; font-size: .875rem; font-weight: 700; }
 .with-dice { display: flex; align-items: stretch; gap: 8px; }
 .with-dice input { flex: 1; }
 .with-dice button { flex-shrink: 0; }
+.quick-add { display: flex; align-items: stretch; gap: 8px; margin-bottom: 20px; }
+.quick-add input { flex: 1; }
+.quick-add button { flex-shrink: 0; }
 .segmented { display: grid; grid-template-columns: 1fr 1fr; }
 .segmented button + button { border-left-width: 0; }
 .segmented button[aria-pressed="true"] { background: var(--ink); color: var(--page); }

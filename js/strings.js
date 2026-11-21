@@ -63,7 +63,7 @@ const en = {
   menuLocked: 'Locked.', ordererChooses: 'The orderer picks the menu.',
   itemCount: n => `${n} item${n === 1 ? '' : 's'}`, priceUnset: 'No price', commonItems: 'Add basic items',
   searchItems: 'Search items', clearSearch: 'Clear search', noMatches: 'No items match.',
-  itemPrices: 'Item prices', itemPricesHelp: 'Set what each item cost before entering the bill.', savePrices: 'Save prices', pricesSaved: 'Prices saved.',
+  itemPricesMissing: 'Missing prices', itemPricesMissingHelp: 'Know what these cost? Add the price. The orderer checks everything before the bill.', itemPrices: 'Item prices', itemPricesHelp: 'Check or set what each item cost before entering the bill.', savePrices: 'Save prices', pricesSaved: 'Prices saved.',
   newSession: 'Start new session', newSessionConfirm: 'Start a new session? This one goes to History. Menus, picks and people are cleared, and everyone will need the new code.',
   menuSaved: 'Menu saved.', itemSaved: 'Item saved.', itemDeleted: 'Item deleted.',
   scanMenu: 'Snap a menu', scanInto: 'Snap a menu', takePhoto: 'Take photo', choosePhoto: 'Choose photo',
@@ -124,6 +124,8 @@ const en = {
   // Sessions
   archivedNotice: (name, unfinished) => `Your last session, ${name}, was idle for over an hour and was archived to History${unfinished ? ' with its open order' : ''}.`,
   viewHistory: 'View history', previousSessions: 'Earlier sessions', archivedRounds: n => `${n} round${n === 1 ? '' : 's'}`, notFinished: 'not finished',
+  quickAdd: 'Add', quickAddLabel: 'Add an item for everyone', quickAddPlaceholder: 'Add item, e.g. Samosa 15', quickAdded: 'Added to your picks.',
+  savedMenus: 'Saved on this device', saveOnDevice: 'Save this menu on this device', savedOnDevice: 'Saved on this device.', savedHint: 'Your own menus, for example one per stall. They stay on this phone only.', useSaved: 'Add to this group', deleteSavedConfirm: name => `Delete “${name}” from this device?`,
   sessionKeepNote: 'Each open starts fresh. Your name and UPI ID stay. A session idle for over an hour is archived to History.',
   // Install
   installTitle: 'Install Chaikadi', installWhy: 'Opens like an app, works offline, and keeps your name ready.', installAction: 'Install app', installNotNow: 'Not now',
