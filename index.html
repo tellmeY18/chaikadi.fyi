@@ -73,7 +73,12 @@
     html { background: var(--page, #FFFFFF); }
     .splash { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--ink, #000000); background: var(--page, #FFFFFF); }
     .splash svg { width: 64px; height: auto; }
+    .app-shell { animation: app-in 160ms ease-out; }
+    @keyframes app-in { from { opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { .app-shell { animation: none; } }
   </style>
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="./brand/fonts/atkinson-hyperlegible-mono-latin.woff2">
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="./brand/fonts/atkinson-hyperlegible-next-latin-wght-normal.woff2">
   <script defer src="./vendor/peerjs.min.js"></script>
   <link rel="modulepreload" href="./js/main.js">
   <link rel="modulepreload" href="./js/ui.js">

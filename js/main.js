@@ -1,6 +1,10 @@
 import { AppStore } from './store.js';
 import { mount } from './ui.js';
 
+// Hold the launch screen until the UI fonts are in (they are cached), so the
+// app appears once, already in its final type, instead of reflowing after.
+const FONTS = ['400 1em "Atkinson Hyperlegible Mono"', '700 1em "Atkinson Hyperlegible Mono"', '400 1em "Atkinson Hyperlegible Next"', '400 1em "Courier Prime"', '700 1em "Courier Prime"'];
+await Promise.race([Promise.all(FONTS.map(f => document.fonts.load(f))).catch(() => {}), new Promise(done => setTimeout(done, 1200))]);
 const store = new AppStore();
 mount(store, document.getElementById('app'));
 window.chaikadiStarted = true;
@@ -26,12 +30,10 @@ window.addEventListener('pageshow', event => { if (event.persisted) store.foregr
 // picks and queued changes are restored and connections reconnect on their own.
 // "Update now" in Settings stays as a manual fallback.
 let registration = null, lastCheck = 0, applying = false, takenOver = false, lastInput = Date.now();
-const IDLE_MS = 60 * 1000, LOADED = Date.now();
-let touched = false;
-for (const type of ['pointerdown', 'keydown', 'input', 'scroll']) addEventListener(type, () => { lastInput = Date.now(); touched = true; store.touch(); }, { passive: true, capture: true });
+const IDLE_MS = 60 * 1000;
+for (const type of ['pointerdown', 'keydown', 'input', 'scroll']) addEventListener(type, () => { lastInput = Date.now(); store.touch(); }, { passive: true, capture: true });
 function safeToRestart() {
   if (document.visibilityState === 'hidden') return true;
-  if (!touched && Date.now() - LOADED < 10 * 1000) return true; // just opened
   if (Date.now() - lastInput < IDLE_MS) return false;
   const active = document.activeElement;
   return !document.querySelector('dialog[open]') && !(active && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName));
