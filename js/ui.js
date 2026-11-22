@@ -1,6 +1,6 @@
 import { h, render, Component } from '../vendor/preact.module.js';
 import htm from '../vendor/htm.module.js';
-import { CATEGORIES, uid, funGroup, validCode, APP_VERSION, EATSIGHTS_URL } from './config.js';
+import { CATEGORIES, uid, funGroup, validCode, APP_VERSION, EATSIGHTS_URL, REPO_URL } from './config.js';
 import { costs, debts, activeItems, activeMenu, rankItems, searchItems } from './state.js';
 import { LibrarySheet } from './library-ui.js';
 import { EsRoundSheet, EsItemSheet, ContribSettings, ResetKeySheet, AddStallSheet, sharingOn, esSource, roundFacts } from './eatsights-ui.js';
@@ -12,6 +12,7 @@ import { t, money } from './strings.js';
 import { Icon, Sheet, Modal, CodeInput, Empty } from './components.js';
 import { upiLinks, upiCurrency, parseUpiQr } from './upi.js';
 import { currentPlatform, installOffer } from './install.js';
+import { CHAI, TIERS, chaiEnabled, chaiLink, shouldAsk, afterAsk, countRound, addCups, setNever, memberLevel, nextLevel, cleanChai, parseTreat } from './chai.js';
 
 const html = htm.bind(h);
 const fields = event => Object.fromEntries(new FormData(event.currentTarget));
@@ -131,6 +132,13 @@ class App extends Component {
       const fresh = mine && key(mine) !== key(previous?.upiProposals?.find(x => x.forId === view.identity.id));
       this.setState({ view, ...(lockedNow ? { sheet: { kind: 'locked' } } : fresh && !this.state.sheet ? { sheet: { kind: 'upiApprove' } } : {}) });
       this.applyTheme(view.preferences.theme);
+      // A round finished in this group (on any member's device): count it and,
+      // when the rules allow, ask once for a chai. Never while another sheet is open.
+      if (previous && view.state && previous.group.id === view.state.group.id && view.state.history.length > previous.history.length) {
+        const chai = countRound(view.preferences.chai);
+        this.props.store.preferences({ chai }).catch(() => {});
+        if (shouldAsk(chai) && !this.state.sheet && !fresh && !lockedNow) setTimeout(() => { if (!this.state.sheet) this.open({ kind: 'chai', ask: true }); }, 2500);
+      }
     });
     // Contributions saved while offline go out once the device is online.
     this.flush = () => { if (sharingOn(this.state.view)) contrib().flush().catch(() => {}); };
@@ -404,6 +412,33 @@ class App extends Component {
         ${[...entry.rounds].reverse().map(round => this.roundReceipt(v, round, { live: false }))}</details>`)}</section>`}
     </section>`;
   }
+  chaiCard(v) {
+    if (!chaiEnabled()) return null;
+    const c = cleanChai(v.preferences.chai), level = memberLevel(c.cups), next = nextLevel(c.cups);
+    return html`<section class="chai card" aria-labelledby="chai-title">
+      <h2 id="chai-title">${t('chaiTitle')}</h2>
+      <p>${t('chaiPitch')}</p>
+      ${c.cups > 0 && html`<p class="chai-card"><strong>${t('chaiYourCard')}</strong> ${t(`level_${level}`)} · ${t('chaiCups', c.cups)}${next ? ` · ${t('chaiNext', next.cups - c.cups, t(`level_${next.id}`))}` : ''}</p>`}
+      <button class="primary full" onClick=${() => this.open({ kind: 'chai', ask: false })}>${t('chaiOpen')}</button>
+      <label class="check"><input type="checkbox" checked=${!c.never} onChange=${e => this.run(() => v && this.props.store.preferences({ chai: setNever(v.preferences.chai, !e.currentTarget.checked) }))}/> ${t('chaiRemind')}</label>
+    </section>`;
+  }
+  chaiSheet(v, p, close) {
+    const store = this.props.store, c = cleanChai(v.preferences.chai), level = memberLevel(c.cups), next = nextLevel(c.cups);
+    const save = outcome => store.preferences({ chai: afterAsk(v.preferences.chai, outcome) }).catch(() => {});
+    const dismiss = outcome => { if (p.ask) save(outcome); close(); };
+    const treat = parseTreat(this.state.chaiText);
+    return html`<${Sheet} title=${t(p.ask ? 'chaiAskTitle' : 'chaiTitle')} onClose=${() => dismiss('later')}><div class="stack chai-sheet">
+      <p>${t(p.ask ? 'chaiAskBody' : 'chaiPitch')}</p>
+      ${c.cups > 0 && html`<p class="banner info"><${Icon} name="check"/><span>${t('chaiYourCard')} <strong>${t(`level_${level}`)}</strong> · ${t('chaiCups', c.cups)}${next ? ` · ${t('chaiNext', next.cups - c.cups, t(`level_${next.id}`))}` : ''}</span></p>`}
+      ${c.cups === 0 && html`<p class="muted">${t('chaiJoin')}</p>`}
+      <ul class="oss-links">${TIERS.map(tier => html`<li key=${tier.id}><a class="button primary outbound" href=${chaiLink(tier, CHAI, t('chaiNote'))}
+        onClick=${() => { store.preferences({ chai: afterAsk(addCups(v.preferences.chai, tier.cups), 'paid') }).catch(() => {}); setTimeout(close, 400); }}>${t(`tier_${tier.id}`)} · ₹${tier.amount / 100}</a><small>${t(`tier_${tier.id}_help`)}</small></li>`)}</ul>
+      <div class="row"><span><span class="muted">${t('payUpiId')}</span><br/><strong>${CHAI.upi}</strong></span><button class="outbound" onClick=${() => this.copy(CHAI.upi, t('payCopied'))}><${Icon} name="copy"/>${t('payCopy')}</button></div>
+      <p class="muted">${t('chaiHonest')}</p>
+      ${p.ask && html`<div class="actions"><button onClick=${() => dismiss('later')}>${t('notNow')}</button><button class="quiet" onClick=${() => dismiss('never')}>${t('chaiNever')}</button></div>`}
+    </div><//>`;
+  }
   settings(v) {
     const s = v.state, store = this.props.store;
     const theme = resolvedTheme(v.preferences.theme);
@@ -424,8 +459,25 @@ class App extends Component {
       ${s && html`<button class="danger" onClick=${() => this.confirm(t('leaveConfirm'), t('leave'), () => store.leave())}><${Icon} name="alert"/>${t('leave')}</button>`}
       ${v.updateReady ? html`<button class="primary" disabled=${v.updating} onClick=${() => store.applyUpdate?.()}>${t(v.updating ? 'updating' : 'updateNow')}</button>`
         : html`<button class="quiet" disabled=${this.state.checking} onClick=${async () => { this.setState({ checking: true }); const r = await (store.checkForUpdate?.() ?? 'current'); this.setState({ checking: false }); store.toast(t(r === 'ready' ? 'updateFound' : r === 'offline' ? 'updateOffline' : 'upToDate')); }}>${t(this.state.checking ? 'checking' : 'checkUpdates')}</button>`}
+      ${this.chaiCard(v)}
+      <section class="oss card" aria-labelledby="oss-title">
+        <h2 id="oss-title">${t('ossTitle')}</h2>
+        <p>${t('ossLead')}</p>
+        <ul class="oss-links">
+          <li><a class="button outbound" href=${`${REPO_URL}/issues/new?template=bug_report.yml`} target="_blank" rel="noopener">${t('ossBug')}</a><small>${t('ossBugHelp')}</small></li>
+          <li><a class="button outbound" href=${`${REPO_URL}/pulls`} target="_blank" rel="noopener">${t('ossPatch')}</a><small>${t('ossPatchHelp')}</small></li>
+          <li><a class="button outbound" href=${`${REPO_URL}/issues/new?template=idea.yml`} target="_blank" rel="noopener">${t('ossIdea')}</a><small>${t('ossIdeaHelp')}</small></li>
+        </ul>
+      <form class="stack chai-custom" onSubmit=${e => e.preventDefault()}>
+        <label>${t('chaiCustomLabel')}<input name="treat" maxlength="70" autocomplete="off" enterkeyhint="done" placeholder=${t('chaiCustomPlaceholder')} value=${this.state.chaiText || ''} onInput=${e => this.setState({ chaiText: e.currentTarget.value })}/></label>
+        ${treat ? html`<a class="button primary outbound" href=${chaiLink(treat, CHAI, t('chaiCustomNote', treat.name))}
+          onClick=${() => { store.preferences({ chai: afterAsk(addCups(v.preferences.chai, treat.cups), 'paid') }).catch(() => {}); this.setState({ chaiText: '' }); setTimeout(close, 400); }}>${t('chaiCustomPay', treat.name, treat.amount / 100)}</a>`
+          : html`<small>${t('chaiCustomHelp')}</small>`}
+      </form>
+        <p class="fineprint"><a href=${REPO_URL} target="_blank" rel="noopener">${t('ossStar')}</a> · ${t('ossFoot')}</p>
+      </section>
       <details class="dev-details" onToggle=${e => this.setState({ devOpen: e.currentTarget.open })}><summary>${t('devOptions')}</summary>${this.state.devOpen && html`<${DevOptions} view=${v} store=${store}/>`}</details>
-      <p class="fineprint">${t('version', APP_VERSION)} · <a href="https://github.com/tellmeY18/chaikadi.fyi" target="_blank" rel="noopener">${t('source')}</a> · <a href=${EATSIGHTS_URL} target="_blank" rel="noopener noreferrer">${t('libraryReadme')}</a></p>
+      <p class="fineprint">${t('version', APP_VERSION)} · <a href=${REPO_URL} target="_blank" rel="noopener">${t('source')}</a> · <a href=${EATSIGHTS_URL} target="_blank" rel="noopener noreferrer">${t('libraryReadme')}</a></p>
       </div>
     </section>`;
   }
@@ -469,6 +521,7 @@ class App extends Component {
     const toSettings = () => { close(); this.go('settings'); };
     if (p.kind === 'esRound') return html`<${EsRoundSheet} plan=${p.plan} source=${p.source} items=${p.items} store=${store} currency=${s?.group.currency || 'Rs'} onClose=${close}
       onOutcome=${outcome => store.preferences({ esPrompts: afterSheet(store.view().preferences.esPrompts, p.plan, outcome, today()) }).catch(() => {})}/>`;
+    if (p.kind === 'chai') return this.chaiSheet(v, p, close);
     if (p.kind === 'resetKey') return html`<${ResetKeySheet} store=${store} onClose=${close} onDone=${p.done}/>`;
     if (p.kind === 'addStall') return html`<${AddStallSheet} view=${v} city=${p.city} onClose=${close} onSettings=${toSettings}
       onUse=${(place, city) => this.open({ kind: 'library', initialPlace: place.id, city })}

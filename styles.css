@@ -263,6 +263,10 @@ details[open] summary { margin-bottom: 12px; }
 .rate-row .choice-row.five > button { min-width: 40px; width: 40px; min-height: 44px; padding: 0; }
 .card { border: var(--rule); padding: 14px; margin-top: 20px; }
 .card p { margin-bottom: 8px; }
+.oss h2 { margin-bottom: 8px; }
+.oss-links { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 12px; }
+.oss-links .button { width: 100%; justify-content: space-between; }
+.oss-links .button.outbound::after { content: "\2197"; }
 .radio-list { display: flex; flex-direction: column; }
 .radio-row { flex-direction: row; align-items: flex-start; gap: 12px; padding: 10px 0; font-size: 1rem; font-weight: 400; }
 .radio-row input { width: 22px; height: 22px; min-height: 0; accent-color: var(--ink); flex-shrink: 0; }
@@ -355,3 +359,6 @@ progress::-webkit-progress-bar { background: var(--page); } progress::-webkit-pr
 .scan-upi .actions { margin: var(--space-2) 0 0; }
 .receipt-like { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-3) var(--space-4); border: var(--rule); }
 .upi-big { font-size: var(--text-section); overflow-wrap: anywhere; }
+.chai h2 { margin-bottom: 8px; }
+.chai .check { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-weight: 400; min-height: 44px; }
+.chai-card { font-size: .95rem; }

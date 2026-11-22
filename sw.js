@@ -1,6 +1,6 @@
 // Bump this version whenever any app-shell file changes. Cache installation is
 // atomic: one missing dependency fails installation rather than half-caching.
-const CACHE = 'chaikadi-shell-v39';
+const CACHE = 'chaikadi-shell-v41';
 // The ~7 MB menu reader (OCR) is NOT part of the shell: it is cached on first
 // use in its own cache, which survives shell updates. Bump only when
 // vendor/ocr/ files change.
@@ -11,7 +11,7 @@ const OCR_CACHE = 'chaikadi-ocr-v1';
 const SHELL = [
   './', './styles.css', './manifest.json',
   './js/config.js', './js/state.js', './js/store.js', './js/p2p.js', './js/qr.js', './js/ui.js', './js/main.js', './js/ingest.js',
-  './js/strings.js', './js/components.js', './js/data.js', './js/library-ui.js', './js/eatsights.js', './js/contrib.js', './js/eatsights-ui.js', './js/prompts.js', './js/netlog.js', './js/dev-ui.js', './js/icediag.js', './js/upi.js', './js/install.js',
+  './js/strings.js', './js/components.js', './js/data.js', './js/library-ui.js', './js/eatsights.js', './js/contrib.js', './js/eatsights-ui.js', './js/prompts.js', './js/netlog.js', './js/dev-ui.js', './js/icediag.js', './js/upi.js', './js/install.js', './js/chai.js',
   './brand/tokens/tokens.css', './brand/css/base.css', './brand/css/components.css',
   './brand/fonts/atkinson-hyperlegible-mono-latin.woff2', './brand/fonts/courier-prime-400-latin.woff2', './brand/fonts/courier-prime-700-latin.woff2', './brand/fonts/noto-serif-malayalam.woff2',
   './vendor/preact.module.js', './vendor/htm.module.js', './vendor/peerjs.min.js', './vendor/qrcode.js', './vendor/jsQR.js',
