@@ -7,12 +7,13 @@
     let
       systems = [ "aarch64-darwin" "x86_64-darwin" "aarch64-linux" "x86_64-linux" ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
-    in {
+    in
+    {
       devShells = forAllSystems (system:
         let pkgs = import nixpkgs { inherit system; };
         in {
           default = pkgs.mkShell {
-            packages = [ pkgs.nodejs_22 pkgs.python3 pkgs.curl pkgs.playwright-driver ]
+            packages = [ pkgs.nodejs_22 pkgs.python3 pkgs.curl pkgs.playwright-driver pkgs.treefmt pkgs.nixpkgs-fmt ]
               ++ nixpkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.chromium ];
             shellHook = ''
               export PLAYWRIGHT_MODULE=${pkgs.playwright-driver}/index.mjs
