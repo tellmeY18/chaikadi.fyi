@@ -80,7 +80,8 @@
     :root:has(.app-shell) { background: var(--page, #FFFFFF); }
     /* The same PNG the OS splash draws (manifest icon on white), centred, inlined so it never pops in. */
     .splash { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #FFFFFF; }
-    .splash img { width: var(--splash-icon, 219px); height: var(--splash-icon, 219px); }
+    /* Chrome centres its own splash below the status bar, so it sits a little above the OS one; follow the one shown just before this. */
+    .splash img { width: var(--splash-icon, 219px); height: var(--splash-icon, 219px); transform: translateY(var(--splash-shift, -22px)); }
     .app-shell { animation: app-in 160ms ease-out; }
     @keyframes app-in { from { opacity: 0; } }
     @media (prefers-reduced-motion: reduce) { .app-shell { animation: none; } }
