@@ -434,6 +434,12 @@ class App extends Component {
       ${c.cups === 0 && html`<p class="muted">${t('chaiJoin')}</p>`}
       <ul class="oss-links">${TIERS.map(tier => html`<li key=${tier.id}><a class="button primary outbound" href=${chaiLink(tier, CHAI, t('chaiNote'))}
         onClick=${() => { store.preferences({ chai: afterAsk(addCups(v.preferences.chai, tier.cups), 'paid') }).catch(() => {}); setTimeout(close, 400); }}>${t(`tier_${tier.id}`)} · ₹${tier.amount / 100}</a><small>${t(`tier_${tier.id}_help`)}</small></li>`)}</ul>
+      <form class="stack chai-custom" onSubmit=${e => e.preventDefault()}>
+        <label>${t('chaiCustomLabel')}<input name="treat" maxlength="70" autocomplete="off" enterkeyhint="done" placeholder=${t('chaiCustomPlaceholder')} value=${this.state.chaiText || ''} onInput=${e => this.setState({ chaiText: e.currentTarget.value })}/></label>
+        ${treat ? html`<a class="button primary outbound" href=${chaiLink(treat, CHAI, t('chaiCustomNote', treat.name))}
+          onClick=${() => { store.preferences({ chai: afterAsk(addCups(v.preferences.chai, treat.cups), 'paid') }).catch(() => {}); this.setState({ chaiText: '' }); setTimeout(close, 400); }}>${t('chaiCustomPay', treat.name, treat.amount / 100)}</a>`
+          : html`<small>${t('chaiCustomHelp')}</small>`}
+      </form>
       <div class="row"><span><span class="muted">${t('payUpiId')}</span><br/><strong>${CHAI.upi}</strong></span><button class="outbound" onClick=${() => this.copy(CHAI.upi, t('payCopied'))}><${Icon} name="copy"/>${t('payCopy')}</button></div>
       <p class="muted">${t('chaiHonest')}</p>
       ${p.ask && html`<div class="actions"><button onClick=${() => dismiss('later')}>${t('notNow')}</button><button class="quiet" onClick=${() => dismiss('never')}>${t('chaiNever')}</button></div>`}
@@ -468,12 +474,6 @@ class App extends Component {
           <li><a class="button outbound" href=${`${REPO_URL}/pulls`} target="_blank" rel="noopener">${t('ossPatch')}</a><small>${t('ossPatchHelp')}</small></li>
           <li><a class="button outbound" href=${`${REPO_URL}/issues/new?template=idea.yml`} target="_blank" rel="noopener">${t('ossIdea')}</a><small>${t('ossIdeaHelp')}</small></li>
         </ul>
-      <form class="stack chai-custom" onSubmit=${e => e.preventDefault()}>
-        <label>${t('chaiCustomLabel')}<input name="treat" maxlength="70" autocomplete="off" enterkeyhint="done" placeholder=${t('chaiCustomPlaceholder')} value=${this.state.chaiText || ''} onInput=${e => this.setState({ chaiText: e.currentTarget.value })}/></label>
-        ${treat ? html`<a class="button primary outbound" href=${chaiLink(treat, CHAI, t('chaiCustomNote', treat.name))}
-          onClick=${() => { store.preferences({ chai: afterAsk(addCups(v.preferences.chai, treat.cups), 'paid') }).catch(() => {}); this.setState({ chaiText: '' }); setTimeout(close, 400); }}>${t('chaiCustomPay', treat.name, treat.amount / 100)}</a>`
-          : html`<small>${t('chaiCustomHelp')}</small>`}
-      </form>
         <p class="fineprint"><a href=${REPO_URL} target="_blank" rel="noopener">${t('ossStar')}</a> · ${t('ossFoot')}</p>
       </section>
       <details class="dev-details" onToggle=${e => this.setState({ devOpen: e.currentTarget.open })}><summary>${t('devOptions')}</summary>${this.state.devOpen && html`<${DevOptions} view=${v} store=${store}/>`}</details>
