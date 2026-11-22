@@ -17,6 +17,7 @@ CSS and `ls-` components are vendored into `brand/` and loaded before
   or regenerate them. `icons/` holds the copies.
 - Tagline: "Decide, order, split."
 - Descriptor: "Free. Free Software. Simple and Stupid."
+- Settings has a "Part of letsimpl.fyi" card with a Learn more link to https://letsimpl.fyi (flagship app of the org).
 - Mark: a plain Kerala tea glass, black on white (inverse white on black). In the app
   it is inlined with `currentColor` (`Mark` in `js/components.js`).
 - `tests/design.test.js` enforces the above: load order, no own colours, shadows,

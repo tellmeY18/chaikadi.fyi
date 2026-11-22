@@ -33,6 +33,7 @@ const en = {
   ossBug: 'Report a bug', ossBugHelp: 'Something broke or felt off? A short note is enough.',
   ossPatch: 'Send a patch', ossPatchHelp: 'Plain JavaScript, no build step. Small fixes are welcome.',
   ossIdea: 'Suggest an idea', ossIdeaHelp: 'Tell us what your group needs next.',
+  lsTitle: 'Part of letsimpl.fyi', lsLead: 'Chaikadi is part of the letsimpl.fyi project.', lsLink: 'Learn more at letsimpl.fyi',
   ossStar: 'Star it on GitHub and tell your group', ossFoot: 'Free forever · AGPL-3.0 · built in the open',
   placeWhere: 'Where', placeHours: 'Hours', placeTax: 'Taxes', placePrices: 'Prices', placeNote: 'Note',
   taxIncluded: 'Prices include taxes.', taxExtra: 'Taxes are extra.',

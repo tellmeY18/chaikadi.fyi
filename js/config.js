@@ -16,7 +16,7 @@ export function relayServers(dev = {}) {
 export const EXTRA_STUN = ['stun:stun.cloudflare.com:3478', 'stun:stun1.l.google.com:19302'];
 export const ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
 // Shown in Settings. Bump with the service-worker cache version on release.
-export const APP_VERSION = '2026.11.22-6';
+export const APP_VERSION = '2026.11.22-7';
 // Multi-menu writes require the same protocol on every peer. Storage remains
 // schema 1 with an additive migration; old app versions must not drop menu IDs.
 // v3: menus can record the library place they were imported from.
@@ -33,6 +33,7 @@ export const SESSION_TTL_MS = 60 * 60 * 1000;
 // signed contributions. Development server: https://develop.letsimpl.fyi.
 export const EATSIGHTS_BASE_URL = 'https://eatsights.letsimpl.fyi';
 export const REPO_URL = 'https://github.com/tellmeY18/chaikadi.fyi';
+export const LETSIMPL_URL = 'https://letsimpl.fyi';
 export const EATSIGHTS_URL = 'https://github.com/tellmeY18/eatsights';
 export const DATA_FETCH_TIMEOUT_MS = 8000;
 // Eatsights has no cities endpoint yet. id: Chaikadi city id; slug: Eatsights

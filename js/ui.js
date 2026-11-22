@@ -1,6 +1,6 @@
 import { h, render, Component } from '../vendor/preact.module.js';
 import htm from '../vendor/htm.module.js';
-import { CATEGORIES, uid, funGroup, validCode, APP_VERSION, EATSIGHTS_URL, REPO_URL } from './config.js';
+import { CATEGORIES, uid, funGroup, validCode, APP_VERSION, EATSIGHTS_URL, REPO_URL, LETSIMPL_URL } from './config.js';
 import { costs, debts, activeItems, activeMenu, rankItems, searchItems } from './state.js';
 import { LibrarySheet } from './library-ui.js';
 import { EsRoundSheet, EsItemSheet, ContribSettings, ResetKeySheet, AddStallSheet, sharingOn, esSource, roundFacts } from './eatsights-ui.js';
@@ -475,6 +475,11 @@ class App extends Component {
           <li><a class="button outbound" href=${`${REPO_URL}/issues/new?template=idea.yml`} target="_blank" rel="noopener">${t('ossIdea')}</a><small>${t('ossIdeaHelp')}</small></li>
         </ul>
         <p class="fineprint"><a href=${REPO_URL} target="_blank" rel="noopener">${t('ossStar')}</a> · ${t('ossFoot')}</p>
+      </section>
+      <section class="card" aria-labelledby="ls-title">
+        <h2 id="ls-title">${t('lsTitle')}</h2>
+        <p>${t('lsLead')}</p>
+        <ul class="oss-links"><li><a class="button outbound" href=${LETSIMPL_URL} target="_blank" rel="noopener">${t('lsLink')}</a></li></ul>
       </section>
       <details class="dev-details" onToggle=${e => this.setState({ devOpen: e.currentTarget.open })}><summary>${t('devOptions')}</summary>${this.state.devOpen && html`<${DevOptions} view=${v} store=${store}/>`}</details>
       <p class="fineprint">${t('version', APP_VERSION)} · <a href=${REPO_URL} target="_blank" rel="noopener">${t('source')}</a> · <a href=${EATSIGHTS_URL} target="_blank" rel="noopener noreferrer">${t('libraryReadme')}</a></p>
