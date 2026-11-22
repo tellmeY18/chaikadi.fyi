@@ -43,7 +43,7 @@ test('crawlers and screen readers still get the description and heading', async 
   const context = await app.device({ javaScriptEnabled: false }), page = await context.newPage();
   await page.goto(app.url);
   assert.match(await page.locator('#app h1').textContent(), /decide, order, split/i);
-  assert.match(await page.locator('noscript').textContent(), /needs JavaScript/);
+  assert.match(await page.locator('body noscript').textContent(), /needs JavaScript/);
   await context.close();
 });
 

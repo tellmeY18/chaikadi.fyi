@@ -5,6 +5,8 @@ import { mount } from './ui.js';
 // Hold the launch screen until the UI fonts are in (they are cached), so the
 // app appears once, already in its final type, instead of reflowing after.
 const FONTS = ['400 1em "Atkinson Hyperlegible Mono"', '700 1em "Atkinson Hyperlegible Mono"', '400 1em "Atkinson Hyperlegible Next"', '400 1em "Courier Prime"', '700 1em "Courier Prime"'];
+const sheet = link => link.media === 'all' ? Promise.resolve() : new Promise(done => link.addEventListener('load', done, { once: true }));
+await Promise.all([...document.querySelectorAll('link[data-app-css]')].map(sheet));
 await Promise.race([Promise.all(FONTS.map(f => document.fonts.load(f))).catch(() => {}), new Promise(done => setTimeout(done, 1200))]);
 mark('fontsReady');
 const store = new AppStore();

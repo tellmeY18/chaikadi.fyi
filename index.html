@@ -64,11 +64,15 @@
       setTimeout(function () { location.reload(); }, 6000);
     }, 5000);
   </script>
-  <link rel="stylesheet" href="./brand/tokens/tokens.css">
-  <link rel="stylesheet" href="./brand/css/base.css">
-  <link rel="stylesheet" href="./brand/css/components.css">
-  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./brand/tokens/tokens.css" media="print" data-app-css onload="this.media='all'">
+  <link rel="stylesheet" href="./brand/css/base.css" media="print" data-app-css onload="this.media='all'">
+  <link rel="stylesheet" href="./brand/css/components.css" media="print" data-app-css onload="this.media='all'">
+  <link rel="stylesheet" href="./styles.css" media="print" data-app-css onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="./brand/tokens/tokens.css"><link rel="stylesheet" href="./brand/css/base.css"><link rel="stylesheet" href="./brand/css/components.css"><link rel="stylesheet" href="./styles.css"></noscript>
   <style>
+    /* The app stylesheets load without blocking, so the launch screen paints as early as possible; main.js waits for them before showing the app. */
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    body { margin: 0; }
     /* Launch screen: same background and mark position as the OS splash, so
        there is no visible step between splash, this page and the app. */
     /* White until the app itself is on screen, whatever the theme: it must match the OS splash. */
