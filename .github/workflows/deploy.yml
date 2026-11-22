@@ -47,7 +47,7 @@ jobs:
       - name: Stage site
         run: |
           mkdir -p dist
-          cp -R index.html styles.css manifest.json sw.js _headers LICENSE js vendor brand icons dist/
+          cp -R index.html styles.css manifest.json sw.js _headers robots.txt sitemap.xml LICENSE js vendor brand icons dist/
           # Every file the service worker precaches must be present.
           node -e "
             const fs = require('fs');
