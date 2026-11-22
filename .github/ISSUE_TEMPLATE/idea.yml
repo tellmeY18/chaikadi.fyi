@@ -1,0 +1,15 @@
+name: Idea
+description: Tell us what your group needs
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does your group run into?
+      description: Describe the situation, not the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?

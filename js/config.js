@@ -32,6 +32,7 @@ export const SESSION_TTL_MS = 60 * 60 * 1000;
 // (https://github.com/tellmeY18/eatsights): CC0 data, public reads, opt-out
 // signed contributions. Development server: https://develop.letsimpl.fyi.
 export const EATSIGHTS_BASE_URL = 'https://eatsights.letsimpl.fyi';
+export const REPO_URL = 'https://github.com/tellmeY18/chaikadi.fyi';
 export const EATSIGHTS_URL = 'https://github.com/tellmeY18/eatsights';
 export const DATA_FETCH_TIMEOUT_MS = 8000;
 // Eatsights has no cities endpoint yet. id: Chaikadi city id; slug: Eatsights

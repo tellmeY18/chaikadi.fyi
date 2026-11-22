@@ -16,6 +16,14 @@ Menu, My picks, Order and Costs. Group, History and Settings are in the app bar
 menu; the online count also opens Group. Two themes, Light (white) and Dark
 (pitch black); the first run follows the device.
 
+## Everyone's project
+
+Splitting a group order is a problem almost everybody has and nobody has fixed
+well. Chaikadi is free and open source (AGPL-3.0), and it needs collective help:
+[report a bug](https://github.com/tellmeY18/chaikadi.fyi/issues/new?template=bug_report.yml),
+[send a patch](CONTRIBUTING.md), or
+[suggest an idea](https://github.com/tellmeY18/chaikadi.fyi/issues/new?template=idea.yml).
+
 ## Run locally
 
 With Nix:
