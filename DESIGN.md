@@ -16,7 +16,7 @@ CSS and `ls-` components are vendored into `brand/` and loaded before
   https://brand.letsimpl.fyi/assets/chaikadi/). Copy the files; never redraw, recolour
   or regenerate them. `icons/` holds the copies.
 - Tagline: "Decide, order, split."
-- Descriptor: "Free. Free Software. Simple and stupid."
+- Descriptor: "Free. Free Software. Simple and Stupid."
 - Mark: a plain Kerala tea glass, black on white (inverse white on black). In the app
   it is inlined with `currentColor` (`Mark` in `js/components.js`).
 - `tests/design.test.js` enforces the above: load order, no own colours, shadows,
