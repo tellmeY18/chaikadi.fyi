@@ -21,7 +21,7 @@ WASM build the device needs is fetched (SIMD on iOS 16.4+ / modern Chrome).
 Source-map comments were stripped from the two tesseract.js files. The library
 has built-in jsDelivr default URLs; Chaikadi always overrides `workerPath`,
 `corePath` and `langPath`, so they are never contacted (verified by
-`tests/scan.mjs`, which blocks all third-party requests).
+`tests/e2e/scan.e2e.mjs`, which blocks all third-party requests).
 
 Source distributions: `https://cdn.jsdelivr.net/npm/<package>@<version>/…`.
 These are provenance URLs, **not runtime imports**. All imports and script tags

@@ -238,7 +238,7 @@ Unit (run in CI before every deploy): `npm test`
 
 Browser (fake Eatsights through Playwright routes; no network):
 `python3 tools/serve.py 8090` then
-`PLAYWRIGHT_MODULE=… TEST_URL=http://127.0.0.1:8090 node tests/eatsights.mjs`
+`npm run test:e2e   # tests/e2e/eatsights.e2e.mjs`
 (optional `CHROME=/path/to/chrome`). Plays full rounds and checks which sheet appears and
 which signed requests Eatsights receives: no sheet for confirmed prices or with sharing off;
 three checks with a per-item rejection; items of a stall without a menu created on Eatsights

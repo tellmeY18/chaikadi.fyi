@@ -234,7 +234,7 @@ prices (contested, unconfirmed, stale, or confirmed over 14 days ago), sold-out 
 time, and a 1–5 rating at most weekly per stall. Confirmed fresh prices are never asked;
 the same item is not asked again within 14 days; three skips in a row pause asking for 14
 days (the orderer's own changes are kept for the next sheet). Rules: `js/prompts.js`,
-tests: `tests/prompts.test.js` and `tests/eatsights.mjs`. The separate "Still ₹10?" card,
+tests: `tests/prompts.test.js` and `tests/e2e/eatsights.e2e.mjs`. The separate "Still ₹10?" card,
 wait and rating sheets were replaced by this sheet.
 
 ## 12. Switched over (2026-11-15)

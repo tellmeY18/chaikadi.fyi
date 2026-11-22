@@ -1,11 +1,10 @@
-// Real-browser test of the Eatsights contribution triggers (prompts.js rules
-// wired into the app). A fake Eatsights answers through Playwright routes, so
-// no network is used and every signed request is checked.
-//   PLAYWRIGHT_MODULE=… TEST_URL=http://127.0.0.1:8090 node tests/eatsights.mjs
-// Optional: CHROME=/path/to/chrome (a browser build other than Playwright's).
+// Eatsights contribution triggers (prompts.js rules wired into the app),
+// the library and stall creation, against a fake Eatsights served through
+// Playwright routes: no network, and every signed request is checked.
+import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-const { chromium, webkit } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const browser = await (process.env.BROWSER === 'webkit' ? webkit : chromium).launch(process.env.CHROME ? { executablePath: process.env.CHROME } : {});
+import { start } from './helpers.mjs';
+
 const base = process.env.TEST_URL || 'http://127.0.0.1:8090';
 const ES = 'https://eatsights.letsimpl.fyi';
 const day = new Date().toISOString();
@@ -53,12 +52,19 @@ async function route(r) {
 }
 
 // ---- app helpers ------------------------------------------------------------
-const errors = [];
-const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
-await context.route(`${ES}/**`, route);
-await context.route('https://data.chaikadi.fyi/**', r => r.abort());
-const p = await context.newPage();
-p.on('pageerror', e => errors.push(e.message));
+
+let app, context, p;
+before(async () => {
+  app = await start();
+  context = await app.device({ routes: (r, url) => url.origin === ES ? route(r) : false });
+  p = await context.newPage();
+  // The supporter prompt appears after the third finished round; it is not what this test is about.
+  const ask = p.getByRole('dialog', { name: 'Enjoying Chaikadi?' });
+  await p.addLocatorHandler(ask, () => ask.getByRole('button', { name: 'Don’t ask again' }).click());
+  await p.goto(app.url);
+});
+after(async () => { await app.finish(); assert.deepEqual(app.errors, []); assert.deepEqual(app.blocked, [], 'no outside requests except the fake Eatsights'); });
+
 const nav = label => p.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: label, exact: true }).click();
 const sheet = () => p.locator('dialog[open]');
 const submissions = () => posts.filter(x => x.path === '/v1/submissions').flatMap(x => x.body);
@@ -109,8 +115,7 @@ async function round(picks, { prices = {}, soldOut = [] } = {}) {
   return (await sheet().count()) && await sheet().getByRole('heading', { name: 'Help the next group' }).count() ? sheet() : null;
 }
 
-try {
-  await p.goto(base);
+test('Eatsights: library menus, uncertain-price prompts, new stall items, offline send, pause after skips', { timeout: 120000 }, async () => {
   await p.getByRole('button', { name: 'Create', exact: true }).click();
   await p.getByRole('heading', { name: 'People' }).waitFor();
 
@@ -132,7 +137,7 @@ try {
   assert.deepEqual(kinds, ['contested', 'unconfirmed', 'unconfirmed'], 'three checks, contested first');
   await s.getByRole('group', { name: 'Coffee' }).getByRole('button', { name: 'Changed' }).click();
   await s.getByLabel('New price for Coffee').fill('999');
-  await s.getByRole('button', { name: /^Send \d+$/ }).click();
+  await s.getByRole('button', { name: /^Send \d+/ }).click();
   await s.getByRole('heading', { name: 'Price updates sent' }).waitFor();
   assert.ok(await s.getByText('Not accepted · price looks off').count(), 'per-item rejection shown');
   assert.equal(posts[0].path, '/v1/keys', 'key registers first');
@@ -159,10 +164,10 @@ try {
   assert.deepEqual(await s.locator('[data-kind]').evaluateAll(els => els.map(e => e.dataset.kind)), ['new']);
   // Offline: saved, then sent once online.
   offline = true;
-  await s.getByRole('button', { name: /^Send \d+$/ }).click();
+  await s.getByRole('button', { name: /^Send \d+/ }).click();
   await p.getByText(/Could not reach Eatsights|You are offline/).first().waitFor();
   offline = false;
-  await s.getByRole('button', { name: /^Send \d+$/ }).click();
+  await s.getByRole('button', { name: /^Send \d+/ }).click();
   await s.getByRole('heading', { name: 'Price updates sent' }).waitFor();
   const entities = posts.filter(x => x.path === '/v1/entities').flatMap(x => x.body);
   assert.deepEqual(entities.map(e => e.entity_type), ['section', 'menu_item']);
@@ -188,7 +193,4 @@ try {
   }
   assert.equal(await round(['Chai'], { prices: { Chai: 20 }, soldOut: ['Bun'] }), null, 'paused after three skips');
   assert.equal(posts.length, 0, 'skipping sends nothing');
-
-  assert.deepEqual(errors, []);
-  console.log('Eatsights trigger browser test passed.');
-} finally { await browser.close(); }
+});

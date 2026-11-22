@@ -12,9 +12,12 @@
         let pkgs = import nixpkgs { inherit system; };
         in {
           default = pkgs.mkShell {
-            packages = [ pkgs.nodejs_22 pkgs.python3 pkgs.curl ];
+            packages = [ pkgs.nodejs_22 pkgs.python3 pkgs.curl pkgs.playwright-driver ]
+              ++ nixpkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.chromium ];
             shellHook = ''
-              echo "Chaikadi: npm test | python3 tools/serve.py"
+              export PLAYWRIGHT_MODULE=${pkgs.playwright-driver}/index.mjs
+              ${nixpkgs.lib.optionalString pkgs.stdenv.isLinux "export CHROME=${pkgs.chromium}/bin/chromium"}
+              echo "Chaikadi: npm test | npm run test:e2e | python3 tools/serve.py"
               echo "No npm install or build needed. Phones require HTTPS."
             '';
           };

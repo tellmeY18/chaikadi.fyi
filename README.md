@@ -55,28 +55,27 @@ nix flake check
 `flake.lock` pins the dev environment. Node/Python are **development tools only**.
 Icons, favicon and the social image come from the brand repo (`assets/chaikadi/`); copy, do not regenerate or redraw.
 
-Optional browser integration checks use a separate Playwright installation
-(not a shipped dependency). With the static server running:
+### End-to-end tests
+
+`tests/e2e/` drives the real app in Chromium: two or three phones in one group over
+real WebRTC data channels (only PeerJS signaling is an in-process fake, so no
+internet is needed), the on-device menu OCR, a fake webcam filmed at QR codes,
+the service worker and update flow, the Eatsights library against a fake API,
+UPI/chai flows, install guidance and the launch sequence. Any request that
+leaves the machine fails the run.
 
 ```sh
-# In the Nix dev shell, install test tooling outside the deployment directory:
-npm install --prefix /path/to/test-tools playwright
-/path/to/test-tools/node_modules/.bin/playwright install chromium webkit
-export PLAYWRIGHT_MODULE=/path/to/test-tools/node_modules/playwright/index.mjs
-node tests/browser.mjs                 # real local WebRTC + offline/PWA flow
-BROWSER=webkit node tests/browser.mjs  # WebKit equivalent
-node tests/room.mjs                    # real public signaling; needs internet
-node tests/scan.mjs                    # on-device menu OCR, online + offline
-node tests/design.mjs                  # multiple menus, themes, sheets, 200% text
-node tests/eatsights.mjs               # Eatsights library and contribution triggers (fake API)
-node tests/session.mjs                 # two windows on one profile: the newest takes over
-node tests/update.mjs                  # in-app update: waits, Update now, state kept
-node --test tests/data.test.js         # library client only (no browser)
+nix develop --command npm run test:e2e   # all of tests/e2e/*.e2e.mjs, then the coverage report
+npm run test:all                        # unit tests + e2e
+COVERAGE_MIN=85 npm run test:e2e        # fail below 85% of js/ lines exercised in the browser
+node --test tests/e2e/launch.e2e.mjs    # one file
 ```
 
-Set `TEST_URL` to override `http://127.0.0.1:8080`. `SCREENSHOT_PATH` overrides
-the browser smoke's screenshot destination. The tests use isolated profiles;
-they do not edit an existing user's group. Run browser suites sequentially.
+The dev shell provides Chromium (`CHROME`) and Playwright (`PLAYWRIGHT_MODULE`). Outside
+Nix, install Playwright anywhere outside this directory and point
+`PLAYWRIGHT_MODULE` at its `index.mjs` (and `CHROME` at a browser if you do not use
+Playwright's own). Coverage is V8 line coverage of `js/` while the suite runs; the
+per-file table is printed and `coverage/e2e/summary.json` lists missed lines.
 
 ## Deploy with the custom domain
 

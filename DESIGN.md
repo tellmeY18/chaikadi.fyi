@@ -90,7 +90,7 @@ on first launch: the payee's own QR is the source, and the payee approves it.
 A browser tab and the installed app share storage, so two windows would both load the same saved group and both claim
 the room code `chaikadi-<CODE>`, which stalled joining. Each window takes a Web Lock (`chaikadi-session`, steal) at boot: the
 newest window wins; the older one stops its room, stops saving and shows "Open in another window" with **Use this window**
-(`tests/session.mjs`). The install card discourages installing mid-order: in a group it reads "Install after this order" (warning
+(`tests/e2e/app.e2e.mjs`). The install card discourages installing mid-order: in a group it reads "Install after this order" (warning
 style) and **Install anyway** asks for confirmation.
 
 ## Installing
