@@ -9,7 +9,7 @@ import { contrib } from './contrib.js';
 import { DevOptions } from './dev-ui.js';
 import { drawQR, scanQR } from './qr.js';
 import { t, money } from './strings.js';
-import { Icon, Sheet, Modal, CodeInput, Empty } from './components.js';
+import { Icon, Mark, Sheet, Modal, CodeInput, Empty } from './components.js';
 import { upiLinks, upiCurrency, parseUpiQr } from './upi.js';
 import { currentPlatform, installOffer } from './install.js';
 import { CHAI, TIERS, chaiEnabled, chaiLink, shouldAsk, afterAsk, countRound, addCups, setNever, memberLevel, nextLevel, cleanChai, parseTreat } from './chai.js';
@@ -593,7 +593,7 @@ class App extends Component {
         <p class="muted">${t('payDesktop')}</p><p class="muted">${t('payNote')}</p></div><//>`;
     }
     if (p.kind === 'copy') return html`<${Sheet} title=${t('selectCopy')} onClose=${close}><textarea readonly rows="8" value=${p.text} onFocus=${e => e.currentTarget.select()} autofocus></textarea><button class="primary" onClick=${close}>${t('done')}</button><//>`;
-    if (p.kind === 'locked') return html`<${Sheet} title=${t('order')} onClose=${close} className="lock-reveal"><${Icon} name="tumbler" size=${48}/><div class="typed-lock" aria-hidden="true">${t('locked')}</div><div class="lock-rule" aria-hidden="true"></div><p>${t('lockHelp')}</p><button class="primary" onClick=${close}>${t('done')}</button><//>`;
+    if (p.kind === 'locked') return html`<${Sheet} title=${t('order')} onClose=${close} className="lock-reveal"><${Mark} size=${48}/><div class="typed-lock" aria-hidden="true">${t('locked')}</div><div class="lock-rule" aria-hidden="true"></div><p>${t('lockHelp')}</p><button class="primary" onClick=${close}>${t('done')}</button><//>`;
     if (p.kind === 'shuffle') {
       const item = activeItems(s).find(i => i.id === v.suggested), locked = s.group.status !== 'open';
       return html`<${Sheet} title=${t('suggestion')} onClose=${close}><div class=${`shuffle-result ${v.shuffling ? 'striking' : ''}`} role="status">${item?.name || t('shuffle')}</div><p class="amount">${item ? money(item.price, s.group.currency) : ''}</p>
@@ -619,7 +619,7 @@ class App extends Component {
     const online = v.role === 'host' || v.hostOnline;
     const onlineCount = s ? s.members.filter(m => m.online && online).length : 0;
     const count = s?.picks.filter(p => p.memberId === v.identity.id).reduce((n, p) => n + p.qty, 0) || 0;
-    return html`<div class="app-shell"><header class="app-header"><div class="header-inner"><a class="brand" href="#" onClick=${e => { e.preventDefault(); this.go('lobby'); }}><${Icon} name="tumbler" size=${28}/><span>${t('app')}</span></a>
+    return html`<div class="app-shell"><header class="app-header"><div class="header-inner"><a class="brand" href="#" onClick=${e => { e.preventDefault(); this.go('lobby'); }}><${Mark} size=${28}/><span>${t('app')}</span></a>
       <div class="header-actions">${s && html`<button class="header-presence" aria-label=${`${t('group')}: ${t('onlineCount', onlineCount)}`} onClick=${() => this.go('lobby')}><span class=${`presence ${online ? 'online' : ''}`} aria-hidden="true"></span><span aria-hidden="true">${onlineCount}</span></button>`}<button class="quiet icon-button" aria-label=${t('more')} aria-expanded=${this.state.appMenu} onClick=${() => this.setState({ appMenu: !this.state.appMenu })}><${Icon} name="more"/></button></div></div>
       ${this.state.appMenu && html`<nav class="app-menu" aria-label=${t('more')}>${s && html`<button onClick=${() => this.go('lobby')}><${Icon} name="user"/>${t('group')}</button>`}${(s || v.archive.length > 0) && html`<button onClick=${() => this.go('history')}><${Icon} name="history"/>${t('history')}</button>`}<button onClick=${() => this.go('settings')}><${Icon} name="settings"/>${t('settings')}</button></nav>`}
       </header>

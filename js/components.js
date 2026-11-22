@@ -22,7 +22,6 @@ const paths = {
   alert: 'M12 3L2 21h20z M12 9v5 M12 17v1', note: 'M4 3h16v13l-5 5H4z M15 21v-5h5 M8 7h8 M8 11h6',
   camera: 'M3 7h4l2-3h6l2 3h4v14H3z M8 13a4 4 0 1 0 8 0a4 4 0 1 0-8 0',
   more: 'M3 6h18 M3 12h18 M3 18h18', back: 'M19 12H5 M11 6l-6 6 6 6', dots: 'M4 11h2v2H4z M11 11h2v2h-2z M18 11h2v2h-2z', link: 'M9 15l6-6 M8 7l3-3a5 5 0 0 1 7 7l-3 3 M16 17l-3 3a5 5 0 0 1-7-7l3-3',
-  tumbler: 'M5 9h14l-2 12H7z M9 2c-2 2 2 3 0 5 M14 1c-2 2 2 3 0 5 M6 14h12',
   book: 'M4 4h7a3 3 0 0 1 3 3v14a3 3 0 0 0-3-3H4z M20 4h-6 M20 4v14h-6',
   external: 'M14 3h7v7 M21 3L11 13 M18 14v7H3V6h7',
   clock: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0 M12 7v5l3 2',
@@ -42,8 +41,11 @@ const paths = {
 export function Icon({ name, size = 24 }) {
   return html`<svg class="icon" viewBox="0 0 24 24" width=${size} height=${size} fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true"><path d=${paths[name] || paths.menu}/></svg>`;
 }
-export function Empty({ text, children, icon = 'tumbler' }) {
-  return html`<div class="empty"><${Icon} name=${icon} size=${48}/><p>${text}</p>${children}</div>`;
+export function Mark({ size = 28 }) {
+  return html`<svg class="icon" viewBox="8 8 40 48" width=${size * 40 / 48} height=${size} fill="currentColor" aria-hidden="true"><path d="M16 8L21 56L43 56L48 8ZM17.99 9.8L46.01 9.8L41.51 53L22.49 53ZM19.05 20L19.21 21.5L44.79 21.5L44.95 20ZM22.89 24L24.63 49L26.13 49L24.39 24ZM27.07 24L27.94 49L29.44 49L28.57 24ZM31.25 24L31.25 49L32.75 49L32.75 24ZM35.43 24L34.56 49L36.06 49L36.93 24ZM39.61 24L37.87 49L39.37 49L41.11 24Z"/></svg>`;
+}
+export function Empty({ text, children, icon }) {
+  return html`<div class="empty">${icon ? html`<${Icon} name=${icon} size=${48}/>` : html`<${Mark} size=${48}/>`}<p>${text}</p>${children}</div>`;
 }
 export function Sheet({ children, ...props }) { return html`<${Modal} ...${props} sheet=${true}>${children}<//>`; }
 export class Modal extends Component {

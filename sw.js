@@ -1,6 +1,6 @@
 // Bump this version whenever any app-shell file changes. Cache installation is
 // atomic: one missing dependency fails installation rather than half-caching.
-const CACHE = 'chaikadi-shell-v42';
+const CACHE = 'chaikadi-shell-v43';
 // The ~7 MB menu reader (OCR) is NOT part of the shell: it is cached on first
 // use in its own cache, which survives shell updates. Bump only when
 // vendor/ocr/ files change.
@@ -15,7 +15,7 @@ const SHELL = [
   './brand/tokens/tokens.css', './brand/css/base.css', './brand/css/components.css',
   './brand/fonts/atkinson-hyperlegible-mono-latin.woff2', './brand/fonts/courier-prime-400-latin.woff2', './brand/fonts/courier-prime-700-latin.woff2', './brand/fonts/noto-serif-malayalam.woff2',
   './vendor/preact.module.js', './vendor/htm.module.js', './vendor/peerjs.min.js', './vendor/qrcode.js', './vendor/jsQR.js',
-  './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png',
+  './icons/icon.svg', './icons/favicon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png',
 ];
 self.addEventListener('install', event => {
   // cache: 'reload' skips the browser's HTTP cache. Without it Safari can mix

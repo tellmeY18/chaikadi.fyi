@@ -53,7 +53,7 @@ nix flake check
 ```
 
 `flake.lock` pins the dev environment. Node/Python are **development tools only**.
-`tools/generate-icons.mjs` regenerates the already committed PNGs if desired.
+Icons, favicon and the social image come from the brand repo (`assets/chaikadi/`); copy, do not regenerate or redraw.
 
 Optional browser integration checks use a separate Playwright installation
 (not a shipped dependency). With the static server running:
@@ -430,11 +430,13 @@ chaikadi.fyi/
 │   ├── Noto-Serif-Malayalam.OFL.txt
 │   └── README.md
 ├── icons/
+│   ├── favicon.svg
 │   ├── icon.svg
 │   ├── icon-192.png
 │   ├── icon-512.png
 │   ├── maskable-512.png
-│   └── apple-touch-icon.png
+│   ├── apple-touch-icon.png
+│   └── og-image.png
 ├── js/
 │   ├── config.js              defaults, config hook, IDs and code validation
 │   ├── state.js               pure reducer, totals, debt tally, persistence
@@ -475,8 +477,7 @@ chaikadi.fyi/
 │   ├── scan.mjs               optional real-browser menu-scan test
 │   └── ingest.test.js         menu text parser / OCR cleanup unit tests
 └── tools/
-    ├── serve.py               local dev server (bigger connection queue)
-    └── generate-icons.mjs     optional dependency-free icon utility
+    └── serve.py               local dev server (bigger connection queue)
 ```
 
 For new features, add a validated reducer intent, route it through the store,

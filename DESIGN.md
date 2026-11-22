@@ -12,9 +12,13 @@ CSS and `ls-` components are vendored into `brand/` and loaded before
   word; text on a fill is `#111111`; square corners, 2px ink borders, no shadows,
   gradients or hatch; 16px minimum read text; 44px touch targets; 3px focus outline;
   no third-party requests; honour colour scheme and reduced motion.
-- We do not make brand material (logo, icons, splash, social image). The app icons in
-  `icons/` pre-date the brand and are placeholders until the brand supplies assets
-  (see https://brand.letsimpl.fyi/assets/manifest.json).
+- The identity kit comes from the brand repo (letsimplfyi/brand, `assets/chaikadi/`,
+  https://brand.letsimpl.fyi/assets/chaikadi/). Copy the files; never redraw, recolour
+  or regenerate them. `icons/` holds the copies.
+- Tagline: "Decide, order, split."
+- Descriptor: "Free. Free Software. Simple and stupid."
+- Mark: a plain Kerala tea glass, black on white (inverse white on black). In the app
+  it is inlined with `currentColor` (`Mark` in `js/components.js`).
 - `tests/design.test.js` enforces the above: load order, no own colours, shadows,
   gradients or rounded corners, contrast of the status pairs.
 
