@@ -69,6 +69,7 @@ node tests/room.mjs                    # real public signaling; needs internet
 node tests/scan.mjs                    # on-device menu OCR, online + offline
 node tests/design.mjs                  # multiple menus, themes, sheets, 200% text
 node tests/eatsights.mjs               # Eatsights library and contribution triggers (fake API)
+node tests/session.mjs                 # two windows on one profile: the newest takes over
 node tests/update.mjs                  # in-app update: waits, Update now, state kept
 node --test tests/data.test.js         # library client only (no browser)
 ```

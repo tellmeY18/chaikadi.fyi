@@ -226,10 +226,12 @@ class App extends Component {
     const offer = installOffer(currentPlatform(), { hasPrompt: !!v.installEvent, snoozedUntil: v.preferences.installSnoozedUntil || 0, force });
     if (!offer) return null;
     const store = this.props.store, steps = offer === 'ios' ? t('installIos') : offer === 'android' ? t('installAndroid') : null;
-    return html`<aside class="banner info install-card" aria-labelledby="install-title"><${Icon} name="install"/><div><h3 id="install-title">${t('installTitle')}</h3><p>${t('installWhy')}</p>
+    const busy = !!v.state; // in a group: discourage installing mid-order
+    const install = () => busy ? this.confirm(t('installAnywayConfirm'), t('installAnyway'), () => this.run(() => store.promptInstall())) : this.run(() => store.promptInstall());
+    return html`<aside class=${`banner ${busy ? 'warning' : 'info'} install-card`} aria-labelledby="install-title"><${Icon} name=${busy ? 'alert' : 'install'}/><div><h3 id="install-title">${t(busy ? 'installLaterTitle' : 'installTitle')}</h3><p>${t(busy ? 'installLaterWhy' : 'installWhy')}</p>
       ${steps && html`<ol class="steps">${steps.map(step => html`<li>${step}</li>`)}</ol>`}
       ${offer === 'browser' && html`<p>${t('installBrowser')}</p>`}
-      <div class="actions">${offer === 'prompt' && html`<button onClick=${() => this.run(() => store.promptInstall())}><${Icon} name="install"/>${t('installAction')}</button>`}
+      <div class="actions">${offer === 'prompt' && html`<button class=${busy ? 'quiet' : ''} onClick=${install}><${Icon} name="install"/>${t(busy ? 'installAnyway' : 'installAction')}</button>`}
       ${!force && html`<button class="quiet" onClick=${() => this.run(() => store.snoozeInstall())}>${t('installNotNow')}</button>`}</div></div></aside>`;
   }
   // Payer side: the orderer has no UPI ID yet. Scan their UPI QR; they approve it.
@@ -630,7 +632,7 @@ class App extends Component {
       </header>
       ${this.state.appMenu && html`<div class="scrim" aria-hidden="true" onClick=${() => this.setState({ appMenu: false })}></div>`}
       <main id="main">
-        ${!v.ready ? html`<p role="status">${t('opening')}</p>` : html`
+        ${v.superseded ? html`<section><div class="banner warning" role="alert"><${Icon} name="alert"/><div><h1>${t('supersededTitle')}</h1><p>${t('supersededBody')}</p><p>${t('supersededHint')}</p></div></div><button class="primary full" onClick=${() => location.reload()}>${t('supersededAction')}</button></section>` : !v.ready ? html`<p role="status">${t('opening')}</p>` : html`
           ${v.archiveNotice && html`<div class="banner info" role="status"><${Icon} name="history"/><span>${t('archivedNotice', v.archiveNotice.name, v.archiveNotice.unfinished)}</span><button class="quiet" onClick=${() => { store.dismissArchiveNotice(); this.go('history'); }}>${t('viewHistory')}</button><button class="quiet icon-button" aria-label=${t('dismiss')} onClick=${() => store.dismissArchiveNotice()}><${Icon} name="close"/></button></div>`}
           ${this.upiApproveBanner(v)}
           ${v.updating && html`<p class="sync-status" role="status">${t('updating')}</p>`}
@@ -642,7 +644,7 @@ class App extends Component {
           ${v.tab === 'settings' ? this.settings(v) : v.tab === 'history' && (s || v.archive.length) ? this.history(v) : !s ? this.home(v) : this[v.tab]?.(v)}
         `}
       </main>
-      ${s && html`<nav class="bottom-nav" aria-label="Main navigation">${tabs.map(([key, icon]) => html`<button key=${key} class=${v.tab === key ? 'active' : ''} aria-current=${v.tab === key ? 'page' : undefined} onClick=${() => this.go(key)}><span class="tab-icon"><${Icon} name=${icon}/>${key === 'picks' && count > 0 && html`<span class="tab-badge"><span class="sr-only">, </span>${count}</span>`}${key === 'order' && s.group.status === 'locked' && html`<span class="tab-badge"><${Icon} name="lock" size=${12}/><span class="sr-only">, ${t('locked')}</span></span>`}</span><span class="tab-label">${t(key)}</span></button>`)}</nav>`}
+      ${s && !v.superseded && html`<nav class="bottom-nav" aria-label="Main navigation">${tabs.map(([key, icon]) => html`<button key=${key} class=${v.tab === key ? 'active' : ''} aria-current=${v.tab === key ? 'page' : undefined} onClick=${() => this.go(key)}><span class="tab-icon"><${Icon} name=${icon}/>${key === 'picks' && count > 0 && html`<span class="tab-badge"><span class="sr-only">, </span>${count}</span>`}${key === 'order' && s.group.status === 'locked' && html`<span class="tab-badge"><${Icon} name="lock" size=${12}/><span class="sr-only">, ${t('locked')}</span></span>`}</span><span class="tab-label">${t(key)}</span></button>`)}</nav>`}
       ${v.toast && html`<button class="toast" role="status" aria-live="polite" onClick=${() => store.toast('')}>${v.toast}</button>`}
       ${this.renderSheet(v)}
       ${this.state.confirmation && html`<${Modal} title=${this.state.confirmation.label} onClose=${() => this.setState({ confirmation: null })}><p>${this.state.confirmation.message}</p><div class="stack"><button autofocus onClick=${() => this.setState({ confirmation: null })}>${t('keep')}</button><button class="danger" onClick=${() => { const action = this.state.confirmation.action; this.setState({ confirmation: null }); this.run(action); }}><${Icon} name="alert"/>${this.state.confirmation.label}</button></div><//>`}

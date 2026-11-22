@@ -150,6 +150,9 @@ const en = {
   sessionKeepNote: 'Each open starts fresh. Your name and UPI ID stay. A session idle for over an hour is archived to History.',
   // Install
   installTitle: 'Install Chaikadi', installWhy: 'Opens like an app, works offline, and keeps your name ready.', installAction: 'Install app', installNotNow: 'Not now',
+  installLaterTitle: 'Install after this order', installLaterWhy: 'You are in a group. Finish this order first, then install. Installing in the middle of an order can open a second copy of Chaikadi and stall joining.',
+  installAnyway: 'Install anyway', installAnywayConfirm: 'Installing in the middle of an order can open a second copy of Chaikadi and stall joining. Install after this order if you can.',
+  supersededTitle: 'Open in another window', supersededBody: 'Chaikadi was opened in another window or in the installed app. This one stopped so the two do not clash over your group.', supersededHint: 'Carry on in that window, or switch back to this one.', supersededAction: 'Use this window',
   installIos: ['Tap Share in the browser bar.', 'Choose “Add to Home Screen”.', 'Tap Add.'],
   installAndroid: ['Open the browser menu (three dots).', 'Choose “Install app” or “Add to Home screen”.', 'Tap Install.'],
   installBrowser: 'This in-app browser cannot install apps. Open this page in Chrome or Safari, then install.',

@@ -1,4 +1,5 @@
 import { parseQuickItem } from './ingest.js';
+const SESSION_LOCK = 'chaikadi-session';
 import { APP_VERSION, SESSION_TTL_MS, relayServers, DEFAULT_CONFIG, PRESETS, PROTOCOL_VERSION, uid, roomCode, validCode, validateConfig, funName } from './config.js';
 import { newGroup, reduce, Persistence, migrate, archiveSession, addArchive, isStale } from './state.js';
 import { validUpi, normalizeUpi } from './upi.js';
@@ -66,8 +67,24 @@ export class AppStore {
     const reconnect = ['relay', 'custom', 'forceRelay'].some(k => JSON.stringify(before[k]) !== JSON.stringify(dev[k]));
     if (reconnect && this.data.role && this.data.targetCode && !this.ui.blocked) { log('info', 'reconnecting with new connection settings'); this.startRoom(); }
   }
-  async persist() { await this.db.save(this.data); }
+  // One active window per device. A browser tab and the installed app share storage, so two
+  // windows would both claim the same room code and overwrite each other's saved group. The
+  // newest window takes the lock; the older one is told (AbortError), stops its room and stops saving.
+  async claimSession() {
+    if (!globalThis.navigator?.locks?.request) return;
+    await new Promise(resolve => {
+      navigator.locks.request(SESSION_LOCK, { steal: true }, () => { resolve(); return new Promise(() => {}); })
+        .catch(error => { if (error?.name === 'AbortError') this.supersede(); else resolve(); });
+    });
+  }
+  supersede() {
+    if (this.ui.superseded) return;
+    this.ui.superseded = true; log('warn', 'another Chaikadi window took over this device');
+    this.network.stop(); this.emit();
+  }
+  async persist() { if (this.ui.superseded) return; await this.db.save(this.data); }
   async boot(code = '') {
+    await this.claimSession();
     await this.db.open();
     const saved = await this.db.load();
     if (saved?.identity && saved.config && (!saved.state || saved.state.schema === 1)) this.data = saved;
@@ -207,7 +224,7 @@ export class AppStore {
     this.startRoom();
   }
   startRoom() {
-    if (this.ui.blocked) return;
+    if (this.ui.blocked || this.ui.superseded) return;
     const dev = this.data.preferences?.dev || {};
     const config = { ...this.data.config, iceServers: [...(this.data.config.iceServers || []), ...relayServers(dev)], iceTransportPolicy: dev.forceRelay ? 'relay' : 'all' };
     this.network.start({ host: this.data.role === 'host', code: this.data.targetCode, config, fresh: !!this.freshRoom });
@@ -226,6 +243,7 @@ export class AppStore {
   }
   dispatch(type, payload) {
     return this.serial(async () => {
+      if (this.ui.superseded) throw new Error('Chaikadi is open in another window. Use that one, or tap Use this window.');
       if (this.ui.blocked) throw new Error('You were removed from this group. Leave it in Settings to start again.');
       this.touch();
       if (!PUBLIC_INTENTS.has(type)) throw new Error('Unsupported action.');

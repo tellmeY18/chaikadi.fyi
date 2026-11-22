@@ -121,3 +121,13 @@ test('a stall menu saves on the device with its prices and comes back as a new g
   await app.deleteSavedMenu(saved.id);
   assert.equal(app.data.profile.saved.length, 0);
 });
+test('a window that another window took over stops its room, stops saving and refuses actions', async () => {
+  const app = await host();
+  let saves = 0; app.db = { save: async () => { saves++; } };
+  app.supersede();
+  assert.equal(app.ui.superseded, true);
+  await app.persist(); assert.equal(saves, 0, 'no writes from the old window');
+  let started = 0; app.network.start = () => { started++; }; app.startRoom(); assert.equal(started, 0, 'does not re-register the room code');
+  assert.equal(await app.dispatch('menu.create', { id: uid(), name: 'Other' }), false, 'actions are refused');
+  assert.match(app.ui.notice, /another window/);
+});

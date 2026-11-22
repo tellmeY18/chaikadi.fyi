@@ -85,6 +85,14 @@ on first launch: the payee's own QR is the source, and the payee approves it.
    iOS, copy ID and a UPI QR for paying from another device.
 6. Paid stays the orderer's decision: they mark the stamp when the money arrives.
 
+## One active window
+
+A browser tab and the installed app share storage, so two windows would both load the same saved group and both claim
+the room code `chaikadi-<CODE>`, which stalled joining. Each window takes a Web Lock (`chaikadi-session`, steal) at boot: the
+newest window wins; the older one stops its room, stops saving and shows "Open in another window" with **Use this window**
+(`tests/session.mjs`). The install card discourages installing mid-order: in a group it reads "Install after this order" (warning
+style) and **Install anyway** asks for confirmation.
+
 ## Installing
 
 Android Chrome: the `beforeinstallprompt` event is kept and an **Install app** button
