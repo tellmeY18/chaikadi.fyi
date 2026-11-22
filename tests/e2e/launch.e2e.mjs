@@ -12,7 +12,7 @@ after(async () => { await app.finish(); assert.deepEqual(app.errors, []); assert
 const frames = () => {
   window.__frames = [];
   const tick = () => {
-    const splash = document.querySelector('.splash svg'), shell = document.querySelector('.app-shell');
+    const splash = document.querySelector('.splash img'), shell = document.querySelector('.app-shell');
     const r = splash?.getBoundingClientRect();
     const visibleText = [...document.querySelectorAll('#app h1, #app p')].filter(e => e.getBoundingClientRect().width > 2).map(e => e.textContent).join('|');
     window.__frames.push(shell ? 'app' : splash ? `splash@${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.width)}` : 'blank' + (visibleText ? ':' + visibleText : ''));

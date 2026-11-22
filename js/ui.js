@@ -15,6 +15,8 @@ import { currentPlatform, installOffer } from './install.js';
 import { CHAI, TIERS, chaiEnabled, chaiLink, shouldAsk, afterAsk, countRound, addCups, setNever, memberLevel, nextLevel, cleanChai, parseTreat } from './chai.js';
 
 const html = htm.bind(h);
+// The launch screen from index.html, reused as-is so nothing moves or reloads when the app takes over.
+const SPLASH = document.querySelector('.splash')?.innerHTML || '';
 const fields = event => Object.fromEntries(new FormData(event.currentTarget));
 const date = value => new Date(value).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
 const nameOf = (state, id) => state.members.find(m => m.id === id)?.name || t('formerMember');
@@ -622,7 +624,7 @@ class App extends Component {
   }
   render() {
     const v = this.state.view, s = v.state, store = this.props.store;
-    if (!v.ready && !v.superseded) return html`<div class="splash" role="status"><${Mark} size=${77}/><span class="sr-only">${t('opening')}</span></div>`;
+    if (!v.ready && !v.superseded) return html`<div class="splash" role="status" dangerouslySetInnerHTML=${{ __html: SPLASH }}></div>`;
     const tabs = [['menu', 'menu'], ['picks', 'user'], ['order', 'receipt'], ['costs', 'rupee']];
     const online = v.role === 'host' || v.hostOnline;
     const onlineCount = s ? s.members.filter(m => m.online && online).length : 0;
