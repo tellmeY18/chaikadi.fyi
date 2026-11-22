@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="color-scheme" content="light">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#FFFFFF">
   <meta name="description" content="Chaikadi is free, Free Software (AGPL-3.0-or-later), Simple and Stupid. Everyone picks, one person orders, the bill splits itself, with UPI payment. No accounts, no ads, works offline.">
@@ -70,7 +71,9 @@
   <style>
     /* Launch screen: same background and mark position as the OS splash, so
        there is no visible step between splash, this page and the app. */
-    html { background: var(--page, #FFFFFF); }
+    /* White until the app itself is on screen, whatever the theme: it must match the OS splash. */
+    html { background: #FFFFFF; }
+    :root:has(.app-shell) { background: var(--page, #FFFFFF); }
     /* The same PNG the OS splash draws (manifest icon on white), centred, inlined so it never pops in. */
     .splash { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #FFFFFF; }
     .splash img { width: var(--splash-icon, 128px); height: var(--splash-icon, 128px); }
