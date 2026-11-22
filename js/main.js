@@ -1,3 +1,4 @@
+import { mark, watchAppFrame } from './launch.js';
 import { AppStore } from './store.js';
 import { mount } from './ui.js';
 
@@ -5,8 +6,10 @@ import { mount } from './ui.js';
 // app appears once, already in its final type, instead of reflowing after.
 const FONTS = ['400 1em "Atkinson Hyperlegible Mono"', '700 1em "Atkinson Hyperlegible Mono"', '400 1em "Atkinson Hyperlegible Next"', '400 1em "Courier Prime"', '700 1em "Courier Prime"'];
 await Promise.race([Promise.all(FONTS.map(f => document.fonts.load(f))).catch(() => {}), new Promise(done => setTimeout(done, 1200))]);
+mark('fontsReady');
 const store = new AppStore();
 mount(store, document.getElementById('app'));
+mark('mounted'); watchAppFrame();
 window.chaikadiStarted = true;
 try { sessionStorage.removeItem('chaikadi-recovered'); } catch { /* storage blocked */ }
 // Chrome (Android, desktop) fires this once the app is installable. Keep the
@@ -78,7 +81,7 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').then(async reg => {
     registration = reg;
     await navigator.serviceWorker.ready;
-    store.ui.offline = 'Offline app ready'; store.emit();
+    mark('swReady'); store.ui.offline = 'Offline app ready'; store.emit();
     markReady();
     reg.addEventListener('updatefound', () => {
       const worker = reg.installing;

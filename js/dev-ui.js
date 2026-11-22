@@ -6,6 +6,7 @@ import { relayServers, APP_VERSION } from './config.js';
 import { selfTest, summaryText, candidateText } from './icediag.js';
 import { withExtraStun } from './p2p.js';
 import { log, logs, logText, clearLogs, onLog } from './netlog.js';
+import { launchText } from './launch.js';
 import { t } from './strings.js';
 import { Icon } from './components.js';
 
@@ -51,7 +52,7 @@ export class DevOptions extends Component {
       JSON.stringify({ ...rest, hostOnline: v.hostOnline, pending: v.pending, status: v.status }, null, 2),
       self ? `\nSelf-test: ${self.verdict.join(' | ')}\n  offered: ${self.local.map(candidateText).join('; ') || 'none'}${self.errors.length ? `\n  errors: ${self.errors.join('; ')}` : ''}` : '\nSelf-test: not run',
       ...failures.map(f => `\nFailed connection with ${f.peer} at ${new Date(f.time).toISOString()}${f.note ? ` (${f.note})` : ''}\n${summaryText(f)}`),
-      '\nLog:', logText()].join('\n');
+      '\nLaunches:', launchText(), '\nLog:', logText()].join('\n');
   }
   async copy() {
     try { await navigator.clipboard.writeText(this.report()); this.props.store.toast(t('copied')); } catch { this.props.store.notice(t('devCopyFailed')); }
@@ -120,6 +121,9 @@ export class DevOptions extends Component {
       <button type="button" disabled=${testing || relay === 'off'} onClick=${() => this.test()}>${testing ? t('devTesting') : t('devTestRelay')}</button>
       ${test && html`<p class=${`banner ${test.ok ? 'info' : 'dashed'}`} role="status"><${Icon} name=${test.ok ? 'check' : 'alert'}/><span>${test.ok ? t('devRelayOk', test.ms, test.candidate) : t('devRelayFail', test.error)}</span></p>`}
 
+      <h3>Launch timeline</h3>
+      <p class="muted">Last launches on this device: PWA or browser, restarts (loadsThisSession above 1 means the page restarted), and when fonts, the app and its first frame appeared.</p>
+      <pre class="dev-log">${launchText()}</pre>
       <h3>${t('devLog', entries.length)}</h3>
       <pre class="dev-log" aria-live="off">${entries.slice(-300).map(e => `${new Date(e.time).toISOString().slice(11, 19)} ${e.level.toUpperCase().padEnd(5)} ${e.message}${e.detail ? ` ${e.detail}` : ''}`).join('\n') || t('devLogEmpty')}</pre>
       <div class="actions two"><button type="button" class="outbound" onClick=${() => this.copy()}><${Icon} name="copy"/>${t('devCopy')}</button><button type="button" class="outbound" onClick=${() => this.download()}><${Icon} name="share"/>${t('devDownload')}</button></div>
