@@ -4,7 +4,7 @@
    app's own components built from brand tokens. There is no brand colour; the
    four status fills mean danger, warning, success, info and never stand alone. */
 :root { --receipt-ink: var(--crayon-ink); }
-html { scroll-padding-top: 16px; scroll-padding-bottom: 104px; }
+html { scroll-padding-top: 16px; scroll-padding-bottom: 184px; }
 body { margin: 0; background: var(--page); }
 button, input, select, textarea { font: inherit; letter-spacing: 0; }
 button, a, input, select, textarea, summary { -webkit-tap-highlight-color: transparent; }
@@ -80,7 +80,7 @@ legend { padding: 0; margin-bottom: 8px; font-size: .875rem; font-weight: 700; }
 .app-menu button { justify-content: flex-start; border: 0; border-bottom: 1px solid var(--line); min-height: 64px; padding: 0; }
 .app-menu button:last-child { border-bottom: 0; }
 .scrim { position: fixed; inset: 0; z-index: 5; background: rgb(0 0 0 / 50%); }
-main { max-width: 560px; margin: auto; padding: 28px 16px calc(120px + env(safe-area-inset-bottom)); }
+main { max-width: 560px; margin: auto; padding: 28px 16px calc(184px + env(safe-area-inset-bottom)); } /* clears the bottom bar and a two-line toast, so the last button is never under it */
 .section-heading { margin-bottom: 24px; padding-bottom: 14px; border-bottom: var(--rule); }
 .section-heading h1 { margin: 0; }
 .section-heading p { margin: 8px 0 0; }
@@ -297,7 +297,7 @@ details[open] summary { margin-bottom: 12px; }
 .bottom-nav .active { border-top-color: var(--ink); font-weight: 700; }
 .tab-icon { position: relative; display: inline-flex; }
 .tab-badge { display: grid; place-items: center; position: absolute; top: -6px; left: 20px; background: var(--ink); color: var(--page); padding: 0 4px; min-width: 20px; min-height: 20px; font-size: .8125rem; line-height: 1.4; font-weight: 700; }
-.toast { position: fixed; z-index: 10; bottom: calc(88px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 32px); min-height: 48px; padding: 12px 16px; background: var(--ink); color: var(--page); border: 0; font-weight: 400; overflow-wrap: anywhere; }
+.toast { position: fixed; z-index: 10; bottom: calc(88px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 32px); min-height: 48px; padding: 12px 16px; background: var(--ink); color: var(--page); border: 0; font-weight: 400; overflow-wrap: anywhere; pointer-events: none; }
 
 /* Sheets and dialogs */
 dialog { color: var(--ink); background: var(--page); border: var(--rule); border-radius: 0; padding: 24px; width: min(calc(100% - 32px), 512px); max-height: 90vh; max-height: 90dvh; overflow-y: auto; }
