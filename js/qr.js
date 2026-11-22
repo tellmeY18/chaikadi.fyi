@@ -1,3 +1,17 @@
+// The QR libraries are only needed on pairing screens, so they load on demand
+// (from the service-worker cache) instead of blocking app start.
+const loading = {};
+function loadScript(src, global) {
+  if (window[global]) return Promise.resolve();
+  return loading[src] ||= new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src; script.onload = resolve; script.onerror = () => { delete loading[src]; reject(new Error(`Could not load ${src}`)); };
+    document.head.append(script);
+  });
+}
+export const loadQRCode = () => loadScript('./vendor/qrcode.js', 'qrcode');
+export const loadJsQR = () => loadScript('./vendor/jsQR.js', 'jsQR');
+
 export function drawQR(container, text) {
   container.replaceChildren();
   // Dense SDP is deliberately text-only rather than an unreliable tiny QR.
@@ -6,6 +20,10 @@ export function drawQR(container, text) {
     p.textContent = 'Pairing code is too large for a reliable QR. Use Copy text and paste it on the other device.';
     container.append(p); return;
   }
+  loadQRCode().then(() => paintQR(container, text)).catch(() => { container.textContent = 'QR unavailable. Copy and paste the text instead.'; });
+}
+function paintQR(container, text) {
+  container.replaceChildren();
   try {
     const qr = window.qrcode(0, 'M'); qr.addData(text); qr.make();
     const count = qr.getModuleCount(), cell = 4, margin = 4;
@@ -26,6 +44,7 @@ export async function scanQR(video, onResult, onError) {
   const stop = () => { stopped = true; clearTimeout(timer); stream?.getTracks().forEach(t => t.stop()); video.srcObject = null; };
   try {
     if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera requires HTTPS and camera permission. Paste the code instead.');
+    await loadJsQR();
     stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' } } });
     if (!video.isConnected) { stop(); return stop; }
     video.srcObject = stream; video.muted = true; video.playsInline = true; await video.play();

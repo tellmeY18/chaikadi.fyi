@@ -67,16 +67,29 @@
   <link rel="stylesheet" href="./brand/css/base.css">
   <link rel="stylesheet" href="./brand/css/components.css">
   <link rel="stylesheet" href="./styles.css">
+  <style>
+    /* Launch screen: same background and mark position as the OS splash, so
+       there is no visible step between splash, this page and the app. */
+    html { background: var(--page, #FFFFFF); }
+    .splash { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--ink, #000000); background: var(--page, #FFFFFF); }
+    .splash svg { width: 64px; height: auto; }
+  </style>
   <script defer src="./vendor/peerjs.min.js"></script>
-  <script defer src="./vendor/qrcode.js"></script>
-  <script defer src="./vendor/jsQR.js"></script>
+  <link rel="modulepreload" href="./js/main.js">
+  <link rel="modulepreload" href="./js/ui.js">
+  <link rel="modulepreload" href="./js/store.js">
+  <link rel="modulepreload" href="./js/state.js">
+  <link rel="modulepreload" href="./js/p2p.js">
+  <link rel="modulepreload" href="./js/config.js">
+  <link rel="modulepreload" href="./vendor/preact.module.js">
   <script type="module" src="./js/main.js"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
   <div id="app">
-    <h1>Chaikadi: decide, order, split</h1>
-    <p>Opening Chaikadi, a free and open-source app for group tea and food orders. Everyone picks, one person orders, and the bill splits itself. No accounts, no ads.</p>
+    <div class="splash" role="status"><svg viewBox="8 8 40 48" fill="currentColor" aria-hidden="true"><path d="M16 8L21 56L43 56L48 8ZM17.99 9.8L46.01 9.8L41.51 53L22.49 53ZM19.05 20L19.21 21.5L44.79 21.5L44.95 20ZM22.89 24L24.63 49L26.13 49L24.39 24ZM27.07 24L27.94 49L29.44 49L28.57 24ZM31.25 24L31.25 49L32.75 49L32.75 24ZM35.43 24L34.56 49L36.06 49L36.93 24ZM39.61 24L37.87 49L39.37 49L41.11 24Z"/></svg></div>
+    <h1 class="sr-only">Chaikadi: decide, order, split</h1>
+    <p class="sr-only">Opening Chaikadi, a free and open-source app for group tea and food orders. Everyone picks, one person orders, and the bill splits itself. No accounts, no ads.</p>
   </div>
   <noscript>Chaikadi needs JavaScript to connect your group and save your picks. Enable JavaScript and reopen this page. Source code: https://github.com/tellmeY18/chaikadi.fyi</noscript>
 </body>

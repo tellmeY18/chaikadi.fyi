@@ -622,6 +622,7 @@ class App extends Component {
   }
   render() {
     const v = this.state.view, s = v.state, store = this.props.store;
+    if (!v.ready && !v.superseded) return html`<div class="splash" role="status"><${Mark} size=${77}/><span class="sr-only">${t('opening')}</span></div>`;
     const tabs = [['menu', 'menu'], ['picks', 'user'], ['order', 'receipt'], ['costs', 'rupee']];
     const online = v.role === 'host' || v.hostOnline;
     const onlineCount = s ? s.members.filter(m => m.online && online).length : 0;
