@@ -5,6 +5,9 @@
   "description": "Free, open-source group ordering: everyone picks, one person orders, the bill splits itself. No accounts.",
   "lang": "en",
   "categories": ["food", "utilities", "productivity"],
+  "screenshots": [
+    { "src": "icons/og-image.png", "sizes": "1200x630", "type": "image/png", "form_factor": "wide", "label": "Chaikadi: decide, order, split your group order" }
+  ],
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
