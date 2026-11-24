@@ -125,7 +125,7 @@ test('chai: supporter sheet, tiers pay by UPI link and fill the card, custom tre
   const { page } = await device(good);
   await page.goto(good.url); await button(page, 'Create').click(); await page.locator('.room-plate').waitFor();
   await menu(page, 'Settings');
-  await page.getByRole('button', { name: 'Buy a chai' }).click();
+  await page.getByRole('button', { name: 'Buy the Dev a Chai' }).click();
   const sheet = dialog(page);
   await sheet.getByText('Your Chaikadi card is empty. Your first chai makes you a Chai Friend.').waitFor();
   assert.match(await sheet.getByRole('link', { name: /^A chai · ₹10/ }).getAttribute('href'), /^upi:\/\/pay\?pa=.+&am=10\.00&cu=INR/);
@@ -142,7 +142,7 @@ test('chai: supporter sheet, tiers pay by UPI link and fill the card, custom tre
   await page.reload(); await page.waitForSelector('.app-shell');
   await menu(page, 'Settings');
   assert.equal(await page.getByLabel('Remind me now and then about buying a chai').isChecked(), false, 'the choice is remembered');
-  await page.getByRole('button', { name: 'Buy a chai' }).click();
+  await page.getByRole('button', { name: 'Buy the Dev a Chai' }).click();
   await dialog(page).getByRole('button', { name: /Copy UPI ID/ }).click();
   await page.locator('.toast', { hasText: 'UPI ID copied.' }).waitFor();
 });

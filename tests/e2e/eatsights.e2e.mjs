@@ -59,7 +59,7 @@ before(async () => {
   context = await app.device({ routes: (r, url) => url.origin === ES ? route(r) : false });
   p = await context.newPage();
   // The supporter prompt appears after the third finished round; it is not what this test is about.
-  const ask = p.getByRole('dialog', { name: 'Enjoying Chaikadi?' });
+  const ask = p.getByRole('dialog', { name: 'Love this software ??' });
   await p.addLocatorHandler(ask, () => ask.getByRole('button', { name: 'Don’t ask again' }).click());
   await p.goto(app.url);
 });

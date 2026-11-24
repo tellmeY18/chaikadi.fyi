@@ -234,6 +234,7 @@ class App extends Component {
       <section class="how" aria-labelledby="how-title"><h2 id="how-title">${t('howTitle')}</h2>
         <ol><li>${t('how1')}</li><li>${t('how2')}</li><li>${t('how3')}</li></ol>
         <button type="button" onClick=${() => { this.tourNew = true; store.preferences({ tour: null }).catch(() => {}); }}><${Icon} name="question"/>${t('howTour')}</button></section>
+      ${this.chaiCard(v)}
       ${this.installCard(v)}
     </section>`;
   }
