@@ -66,7 +66,7 @@ export async function start({ root, camera } = {}) {
   const app = {
     url: server.url, browser, errors, blocked, signaling: hub,
     // One browser profile (own storage, service worker, locks), like one phone.
-    async device({ viewport = { width: 390, height: 844 }, allow = [], routes, ...options } = {}) {
+    async device({ viewport = { width: 390, height: 844 }, allow = [], routes, tour = false, ...options } = {}) {
       const context = await browser.newContext({ viewport, ...options });
       await context.route('**/*', async route => {
         const url = new URL(route.request().url());
@@ -76,6 +76,8 @@ export async function start({ root, camera } = {}) {
         blocked.push(url.href); return route.abort();
       });
       context.setDefaultTimeout(6000);
+      // The first-run tour is tested in tour.e2e.mjs; elsewhere it is skipped like a user would.
+      if (!tour) await context.addInitScript(() => new MutationObserver(() => document.querySelector('.tour-actions .quiet')?.click()).observe(document, { childList: true, subtree: true }));
       await hub.attach(context);
       context.on('page', page => track(page));
       const close = context.close.bind(context);

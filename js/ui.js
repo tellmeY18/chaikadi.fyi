@@ -4,6 +4,7 @@ import { CATEGORIES, uid, funGroup, validCode, APP_VERSION, EATSIGHTS_URL, REPO_
 import { costs, debts, activeItems, activeMenu, rankItems, searchItems } from './state.js';
 import { LibrarySheet } from './library-ui.js';
 import { EsRoundSheet, EsItemSheet, ContribSettings, ResetKeySheet, AddStallSheet, sharingOn, esSource, roundFacts } from './eatsights-ui.js';
+import { Tour, tourDue } from './tour.js';
 import { planRound, afterSheet, today } from './prompts.js';
 import { contrib } from './contrib.js';
 import { DevOptions } from './dev-ui.js';
@@ -159,6 +160,15 @@ class App extends Component {
       import('./ingest.js').then(m => m.prefetchOCR()).catch(() => {});
     }
   }
+  // Decided once per visit: people who already have a group or history are not new.
+  tourShown(v) {
+    if (!tourDue(v)) return false;
+    if (this.tourNew === undefined) {
+      this.tourNew = !(v.state || v.archive.length);
+      if (!this.tourNew) this.props.store.preferences({ tour: 'done' }).catch(() => {});
+    }
+    return this.tourNew;
+  }
   applyTheme(preference) {
     const theme = resolvedTheme(preference);
     document.documentElement.dataset.theme = theme;
@@ -221,6 +231,9 @@ class App extends Component {
         <button class="primary">${t('create')}</button>
         <button type="button" onClick=${() => this.setState({ homeMode: 'join' })}>${t('join')}</button>
       </form>
+      <section class="how" aria-labelledby="how-title"><h2 id="how-title">${t('howTitle')}</h2>
+        <ol><li>${t('how1')}</li><li>${t('how2')}</li><li>${t('how3')}</li></ol>
+        <button type="button" onClick=${() => { this.tourNew = true; store.preferences({ tour: null }).catch(() => {}); }}><${Icon} name="question"/>${t('howTour')}</button></section>
       ${this.installCard(v)}
     </section>`;
   }
@@ -461,6 +474,7 @@ class App extends Component {
         <button>${t('saveName')}</button><p class="muted">${t('sessionKeepNote')}</p>
       </form>
       ${this.installCard(v, true)}
+      <div class="stack"><button onClick=${() => { this.tourNew = true; this.go(s ? 'menu' : 'lobby'); store.preferences({ tour: null }).catch(() => {}); }}><${Icon} name="question"/>${t('tourReplay')}</button><small>${t('tourReplayHint')}</small></div>
       ${v.role === 'host' && s && html`<form class="stack" onSubmit=${e => { e.preventDefault(); this.action('group.currency', { currency: fields(e).currency }); }}><label>${t('groupCurrency')}<span class="with-dice"><input name="currency" required maxlength="8" defaultValue=${s.group.currency} list="currencies"/><button disabled=${s.group.status !== 'open'}>${t('saveCurrency')}</button></span><small>${t('currencyHint')}</small></label><datalist id="currencies"><option value="Rs"/><option value="₹"/><option value="$"/><option value="€"/></datalist></form>`}
       <fieldset><legend>${t('theme')}</legend><div class="segmented">${['light', 'dark'].map(value => html`<button type="button" aria-pressed=${theme === value} onClick=${() => this.run(() => store.preferences({ theme: value }))}>${theme === value && html`<${Icon} name="check" size=${20}/>`}${t(value)}</button>`)}</div></fieldset>
       ${s && html`<button class="outbound" onClick=${() => this.download(store.backup())}><${Icon} name="share"/>${t('export')}</button>`}
@@ -650,6 +664,7 @@ class App extends Component {
       ${s && !v.superseded && html`<nav class="bottom-nav" aria-label="Main navigation">${tabs.map(([key, icon]) => html`<button key=${key} class=${v.tab === key ? 'active' : ''} aria-current=${v.tab === key ? 'page' : undefined} onClick=${() => this.go(key)}><span class="tab-icon"><${Icon} name=${icon}/>${key === 'picks' && count > 0 && html`<span class="tab-badge"><span class="sr-only">, </span>${count}</span>`}${key === 'order' && s.group.status === 'locked' && html`<span class="tab-badge"><${Icon} name="lock" size=${12}/><span class="sr-only">, ${t('locked')}</span></span>`}</span><span class="tab-label">${t(key)}</span></button>`)}</nav>`}
       ${v.toast && html`<button class="toast" role="status" aria-live="polite" onClick=${() => store.toast('')}>${v.toast}</button>`}
       ${this.renderSheet(v)}
+      ${this.tourShown(v) && html`<${Tour} inGroup=${!!s} onTab=${tab => this.go(tab)} onDone=${() => store.preferences({ tour: 'done' }).catch(() => {})}/>`}
       ${this.state.confirmation && html`<${Modal} title=${this.state.confirmation.label} onClose=${() => this.setState({ confirmation: null })}><p>${this.state.confirmation.message}</p><div class="stack"><button autofocus onClick=${() => this.setState({ confirmation: null })}>${t('keep')}</button><button class="danger" onClick=${() => { const action = this.state.confirmation.action; this.setState({ confirmation: null }); this.run(action); }}><${Icon} name="alert"/>${this.state.confirmation.label}</button></div><//>`}
     </div>`;
   }

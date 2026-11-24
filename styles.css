@@ -362,3 +362,20 @@ progress::-webkit-progress-bar { background: var(--page); } progress::-webkit-pr
 .chai h2 { margin-bottom: 8px; }
 .chai .check { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-weight: 400; min-height: 44px; }
 .chai-card { font-size: .95rem; }
+
+.tour-layer { position: fixed; inset: 0; z-index: 8; pointer-events: none; }
+.tour-dim { position: absolute; inset: 0; background: var(--page); opacity: .78; }
+.tour-spot { position: absolute; border: 4px solid var(--ink); transition: all 200ms ease-out; }
+.tour { pointer-events: auto; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: min(100%,560px); padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); background: var(--page); color: var(--ink); border-top: var(--rule); display: grid; gap: 8px; }
+.tour.at-top { bottom: auto; top: 0; padding: calc(16px + env(safe-area-inset-top)) 16px 16px; border-top: 0; border-bottom: var(--rule); }
+.tour h2, .tour p { margin: 0; }
+.tour-count { font-size: .875rem; opacity: .7; }
+.tour-wait { display: flex; gap: 8px; align-items: center; font-weight: 700; }
+.tour-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 8px; }
+.tour-actions .quiet { margin-right: auto; }
+.how { display: grid; gap: 12px; margin-top: 24px; }
+.how h2, .how ol { margin: 0; }
+.how ol { padding-left: 24px; display: grid; gap: 8px; }
+.tour-demo { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.tour-demo li { display: flex; gap: 8px; align-items: flex-start; padding: 8px; border: var(--rule); font-size: .9375rem; }
+.tour-demo .icon { flex: none; }
