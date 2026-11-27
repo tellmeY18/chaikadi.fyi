@@ -9,6 +9,7 @@ COUNTRY=${STUN_HOTSPOT_COUNTRY:-US}
 BAND=${STUN_HOTSPOT_BAND:-}
 CHANNEL=${STUN_HOTSPOT_CHANNEL:-}
 AP_IFACE=ap0
+STUN_HOSTS=(stun.l.google.com stun1.l.google.com stun.cloudflare.com global.stun.twilio.com)
 PIDFILE=/tmp/opencode/stun-hotspot.pid
 LOGFILE=/tmp/opencode/stun-hotspot.log
 STATEFILE=/tmp/opencode/stun-hotspot.uplink
@@ -86,15 +87,46 @@ show_qr() {
   fi
 }
 
+client_net() {
+  local net
+  net=$(ip -4 -o addr show dev "$AP_IFACE" 2>/dev/null | awk '{print $4}' | head -1)
+  printf '%s\n' "${net:-192.168.12.0/24}"
+}
+
 add_rule() {
-  iptables -C FORWARD -i "$AP_IFACE" -o "$1" -p udp --dport "$2" -j DROP 2>/dev/null || \
-    iptables -I FORWARD -i "$AP_IFACE" -o "$1" -p udp --dport "$2" -j DROP
+  local port=$1 net
+  net=$(client_net)
+  # Drop forwarded STUN and redirect anything still routed to a closed port.
+  iptables -C FORWARD -s "$net" -p udp --dport "$port" -j DROP 2>/dev/null || \
+    iptables -I FORWARD -s "$net" -p udp --dport "$port" -j DROP
+  iptables -t nat -C PREROUTING -s "$net" -p udp --dport "$port" -j REDIRECT --to-ports 9 2>/dev/null || \
+    iptables -t nat -I PREROUTING -s "$net" -p udp --dport "$port" -j REDIRECT --to-ports 9
 }
 
 del_rule() {
-  while iptables -C FORWARD -i "$AP_IFACE" -o "$1" -p udp --dport "$2" -j DROP 2>/dev/null; do
-    iptables -D FORWARD -i "$AP_IFACE" -o "$1" -p udp --dport "$2" -j DROP
+  local port=$1 net
+  net=$(client_net)
+  while iptables -C FORWARD -s "$net" -p udp --dport "$port" -j DROP 2>/dev/null; do
+    iptables -D FORWARD -s "$net" -p udp --dport "$port" -j DROP
   done
+  while iptables -t nat -C PREROUTING -s "$net" -p udp --dport "$port" -j REDIRECT --to-ports 9 2>/dev/null; do
+    iptables -t nat -D PREROUTING -s "$net" -p udp --dport "$port" -j REDIRECT --to-ports 9
+  done
+}
+
+# Point create_ap's dnsmasq at the known STUN names so WebRTC cannot resolve
+# a reachable server even if a packet slips past the firewall rules.
+block_stun_dns() {
+  local conf confdir host
+  conf=$(ps -eo args= | awk '/dnsmasq .*-C \/tmp\/create_ap/ {for (i=1;i<=NF;i++) if ($i=="-C") {print $(i+1); exit}}')
+  [[ -n "$conf" && -f "$conf" ]] || return 0
+  for host in "${STUN_HOSTS[@]}"; do
+    grep -q "^address=/${host}/" "$conf" || echo "address=/${host}/0.0.0.0" >>"$conf"
+  done
+  confdir=${conf%/*}
+  if [[ -f "$confdir/dnsmasq.pid" ]]; then
+    kill -HUP "$(<"$confdir/dnsmasq.pid")" 2>/dev/null || true
+  fi
 }
 
 start() {
@@ -120,25 +152,31 @@ start() {
     --pidfile "$PIDFILE" --logfile "$LOGFILE" \
     "$dev" "$dev" "$SSID" "$PASS"
 
+  # Wait until create_ap has finished NAT setup: it inserts its own ACCEPT
+  # rules with -I, which would otherwise land above our DROP rules.
   local ready=0
-  for _ in {1..50}; do
-    if ip link show "$AP_IFACE" >/dev/null 2>&1; then ready=1; break; fi
+  for _ in {1..150}; do
+    if ip link show "$AP_IFACE" >/dev/null 2>&1 && grep -q 'Sharing Internet using method' "$LOGFILE" 2>/dev/null; then
+      ready=1
+      break
+    fi
     sleep 0.1
   done
   if [[ "$ready" -ne 1 ]]; then
-    echo "AP did not start; see $LOGFILE" >&2
+    echo "AP did not finish setup; see $LOGFILE" >&2
     exit 1
   fi
   # create_ap writes these as root; make them readable by `stun-hotspot status`.
   chmod 644 "$PIDFILE" "$LOGFILE" 2>/dev/null || true
 
   # Inserted after create_ap, so these DROP rules sit above its ACCEPT rules.
-  add_rule "$dev" 3478
-  add_rule "$dev" 19302
+  add_rule 3478
+  add_rule 19302
+  block_stun_dns
 
   cat <<EOF
 AP "${SSID}" is up on channel ${channel} via ${dev} (${AP_IFACE}).
-STUN UDP 3478 and 19302 are blocked from ${AP_IFACE} to ${dev}.
+STUN UDP 3478/19302 and the STUN hostnames are blocked for AP clients.
 
 On the phone:
   1. Join ${SSID} (password: ${PASS}).
@@ -152,12 +190,8 @@ EOF
 }
 
 stop() {
-  local dev
-  if [[ -f "$STATEFILE" ]]; then dev=$(<"$STATEFILE"); else dev=$(uplink || true); fi
-  if [[ -n "$dev" ]]; then
-    del_rule "$dev" 3478
-    del_rule "$dev" 19302
-  fi
+  del_rule 3478
+  del_rule 19302
   if ip link show "$AP_IFACE" >/dev/null 2>&1 || [[ -f "$PIDFILE" ]]; then
     create_ap --stop "$AP_IFACE" || true
   fi
