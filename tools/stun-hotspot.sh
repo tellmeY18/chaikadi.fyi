@@ -19,7 +19,7 @@ usage() {
 Usage: stun-hotspot {start|status|stop}
 
 start   Share the current WiFi as "${SSID}" on the same channel, isolate
-        clients, and drop UDP 3478/19302 from the AP to the uplink.
+        clients, and block STUN plus all client UDP so WebRTC cannot connect.
 status  Show the running AP, its address, and the latest log lines.
 stop    Remove the firewall rules and stop the AP.
 
@@ -114,6 +114,39 @@ del_rule() {
   done
 }
 
+# Blocking STUN ports alone is not enough: peers on the same network can
+# connect using host candidates. Drop all client UDP except DNS so ICE has no
+# working route at all, which is what the join-screen hint is meant to explain.
+block_webrtc_udp() {
+  local net
+  net=$(client_net)
+  iptables -C FORWARD -s "$net" -p udp -j DROP 2>/dev/null || \
+    iptables -I FORWARD -s "$net" -p udp -j DROP
+  # A peer running on the hotspot host itself is reached via INPUT, not FORWARD.
+  iptables -C INPUT -s "$net" -p udp -j DROP 2>/dev/null || \
+    iptables -I INPUT -s "$net" -p udp -j DROP
+  for port in 5353 67; do
+    iptables -C INPUT -s "$net" -p udp --dport "$port" -j ACCEPT 2>/dev/null || \
+      iptables -I INPUT -s "$net" -p udp --dport "$port" -j ACCEPT
+  done
+}
+
+unblock_webrtc_udp() {
+  local net
+  net=$(client_net)
+  while iptables -C FORWARD -s "$net" -p udp -j DROP 2>/dev/null; do
+    iptables -D FORWARD -s "$net" -p udp -j DROP
+  done
+  for port in 67 5353; do
+    while iptables -C INPUT -s "$net" -p udp --dport "$port" -j ACCEPT 2>/dev/null; do
+      iptables -D INPUT -s "$net" -p udp --dport "$port" -j ACCEPT
+    done
+  done
+  while iptables -C INPUT -s "$net" -p udp -j DROP 2>/dev/null; do
+    iptables -D INPUT -s "$net" -p udp -j DROP
+  done
+}
+
 # Point create_ap's dnsmasq at the known STUN names so WebRTC cannot resolve
 # a reachable server even if a packet slips past the firewall rules.
 block_stun_dns() {
@@ -148,6 +181,7 @@ start() {
 
   mkdir -p /tmp/opencode
   printf '%s\n' "$dev" >"$STATEFILE"
+  : >"$LOGFILE"   # so the readiness grep only sees this run's setup line
   create_ap -c "$channel" --freq-band "$band" --country "$COUNTRY" --isolate-clients --daemon \
     --pidfile "$PIDFILE" --logfile "$LOGFILE" \
     "$dev" "$dev" "$SSID" "$PASS"
@@ -172,11 +206,13 @@ start() {
   # Inserted after create_ap, so these DROP rules sit above its ACCEPT rules.
   add_rule 3478
   add_rule 19302
+  block_webrtc_udp
   block_stun_dns
 
   cat <<EOF
 AP "${SSID}" is up on channel ${channel} via ${dev} (${AP_IFACE}).
-STUN UDP 3478/19302 and the STUN hostnames are blocked for AP clients.
+STUN UDP 3478/19302, the STUN hostnames, and client UDP are blocked.
+TCP signalling and local DNS still work, so WebRTC must fail.
 
 On the phone:
   1. Join ${SSID} (password: ${PASS}).
@@ -192,6 +228,7 @@ EOF
 stop() {
   del_rule 3478
   del_rule 19302
+  unblock_webrtc_udp
   if ip link show "$AP_IFACE" >/dev/null 2>&1 || [[ -f "$PIDFILE" ]]; then
     create_ap --stop "$AP_IFACE" || true
   fi
