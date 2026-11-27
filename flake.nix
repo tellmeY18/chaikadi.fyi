@@ -19,6 +19,7 @@
               pkgs.iw
               pkgs.iptables
               pkgs.linux-wifi-hotspot
+              pkgs.qrencode
               (pkgs.writeShellScriptBin "stun-hotspot" ''exec bash ${./tools/stun-hotspot.sh} "$@"'')
             ];
             shellHook = ''

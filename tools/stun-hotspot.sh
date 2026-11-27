@@ -5,6 +5,9 @@ set -euo pipefail
 
 SSID=${STUN_HOTSPOT_SSID:-ChaiNoStun}
 PASS=${STUN_HOTSPOT_PASS:-testpass123}
+COUNTRY=${STUN_HOTSPOT_COUNTRY:-US}
+BAND=${STUN_HOTSPOT_BAND:-}
+CHANNEL=${STUN_HOTSPOT_CHANNEL:-}
 AP_IFACE=ap0
 PIDFILE=/tmp/opencode/stun-hotspot.pid
 LOGFILE=/tmp/opencode/stun-hotspot.log
@@ -19,7 +22,8 @@ start   Share the current WiFi as "${SSID}" on the same channel, isolate
 status  Show the running AP, its address, and the latest log lines.
 stop    Remove the firewall rules and stop the AP.
 
-Overrides: STUN_HOTSPOT_SSID, STUN_HOTSPOT_PASS
+Overrides: STUN_HOTSPOT_SSID, STUN_HOTSPOT_PASS, STUN_HOTSPOT_COUNTRY,
+           STUN_HOTSPOT_BAND (2.4|5), STUN_HOTSPOT_CHANNEL
 EOF
 }
 
@@ -68,6 +72,20 @@ band_for() {
   if (( freq >= 5000 )); then echo 5; else echo 2.4; fi
 }
 
+wifi_escape() {
+  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/;/\\;/g' -e 's/,/\\,/g' -e 's/:/\\:/g'
+}
+
+show_qr() {
+  local payload="WIFI:T:WPA;S:$(wifi_escape "$SSID");P:$(wifi_escape "$PASS");;"
+  echo "Scan to join ${SSID}:"
+  if command -v qrencode >/dev/null; then
+    qrencode -t ANSIUTF8 "$payload" || echo "$payload"
+  else
+    echo "$payload"
+  fi
+}
+
 add_rule() {
   iptables -C FORWARD -i "$AP_IFACE" -o "$1" -p udp --dport "$2" -j DROP 2>/dev/null || \
     iptables -I FORWARD -i "$AP_IFACE" -o "$1" -p udp --dport "$2" -j DROP
@@ -84,8 +102,12 @@ start() {
   dev=$(uplink)
   freq=$(frequency "$dev")
   [[ -n "$freq" ]] || { echo "$dev is not associated; connect it to WiFi first" >&2; exit 1; }
-  channel=$(channel_for "$freq")
-  band=$(band_for "$freq")
+  channel=${CHANNEL:-$(channel_for "$freq")}
+  band=${BAND:-$(band_for "$freq")}
+  if [[ "$band" != 2.4 && "$band" != 5 ]]; then
+    echo "invalid STUN_HOTSPOT_BAND: $band (use 2.4 or 5)" >&2
+    exit 2
+  fi
 
   if ip link show "$AP_IFACE" >/dev/null 2>&1; then
     echo "$AP_IFACE already exists; run 'stun-hotspot stop' first" >&2
@@ -94,8 +116,8 @@ start() {
 
   mkdir -p /tmp/opencode
   printf '%s\n' "$dev" >"$STATEFILE"
-  create_ap -c "$channel" --freq-band "$band" --isolate-clients --daemon \
-    --pidfile "$PIDFILE" --logfile "$LOGFILE" --fix-unmanaged \
+  create_ap -c "$channel" --freq-band "$band" --country "$COUNTRY" --isolate-clients --daemon \
+    --pidfile "$PIDFILE" --logfile "$LOGFILE" \
     "$dev" "$dev" "$SSID" "$PASS"
 
   local ready=0
@@ -107,6 +129,8 @@ start() {
     echo "AP did not start; see $LOGFILE" >&2
     exit 1
   fi
+  # create_ap writes these as root; make them readable by `stun-hotspot status`.
+  chmod 644 "$PIDFILE" "$LOGFILE" 2>/dev/null || true
 
   # Inserted after create_ap, so these DROP rules sit above its ACCEPT rules.
   add_rule "$dev" 3478
@@ -124,6 +148,7 @@ On the phone:
 Logs: ${LOGFILE}
 Stop with: stun-hotspot stop
 EOF
+  show_qr
 }
 
 stop() {
@@ -136,17 +161,22 @@ stop() {
   if ip link show "$AP_IFACE" >/dev/null 2>&1 || [[ -f "$PIDFILE" ]]; then
     create_ap --stop "$AP_IFACE" || true
   fi
+  create_ap --fix-unmanaged >/dev/null 2>&1 || true
   rm -f "$STATEFILE" "$PIDFILE"
   echo 'STUN-blocking AP stopped.'
 }
 
 status() {
   echo '--- stun-hotspot ---'
-  if [[ -f "$PIDFILE" ]]; then echo "pid: $(<"$PIDFILE")"; else echo 'not running'; fi
-  if [[ -f "$STATEFILE" ]]; then echo "uplink: $(<"$STATEFILE")"; fi
+  if ip link show "$AP_IFACE" >/dev/null 2>&1; then
+    if [[ -r "$PIDFILE" ]]; then echo "running (pid $(<"$PIDFILE"))"; else echo 'running'; fi
+  else
+    echo 'not running'
+  fi
+  if [[ -r "$STATEFILE" ]]; then echo "uplink: $(<"$STATEFILE")"; fi
   echo "--- ${AP_IFACE} ---"
   ip -br address show dev "$AP_IFACE" 2>/dev/null || echo 'not up'
-  if [[ -f "$LOGFILE" ]]; then
+  if [[ -r "$LOGFILE" ]]; then
     echo "--- ${LOGFILE} (last 20) ---"
     tail -n 20 "$LOGFILE"
   fi
