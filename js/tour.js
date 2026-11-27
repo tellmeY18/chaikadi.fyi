@@ -11,6 +11,7 @@ const html = htm.bind(h);
 export const STEPS = Object.freeze([
   { id: 'welcome' },
   { id: 'group', target: '.home form', targetInGroup: '.header-presence' },
+  { id: 'nav', tab: 'menu', target: '.bottom-nav', demo: [['menu', 'menu'], ['user', 'picks'], ['receipt', 'order'], ['rupee', 'costs']], demoKey: 'tourNav' },
   { id: 'menu', tab: 'menu', target: '.menu-chips, main .empty' },
   { id: 'prices', tab: 'menu', target: '.section-heading .tools .icon-button' },
   { id: 'add', tab: 'picks', target: '.quick-add' },
@@ -55,7 +56,7 @@ export class Tour extends Component {
         <p class="tour-count">${t('tourCount', step + 1, STEPS.length)}</p>
         <h2>${t(`tour_${id}_title`)}</h2>
         <p aria-live="polite">${t(`tour_${id}_body`)}</p>
-        ${STEPS[step].demo && html`<ol class="tour-demo">${STEPS[step].demo.map(([icon, who], i) => html`<li key=${i}><${Icon} name=${icon} size=${20}/><span><strong>${t(`tourWho_${who}`)}</strong> ${t('tourDemo')[i]}</span></li>`)}</ol>`}
+        ${STEPS[step].demo && html`<ol class="tour-demo">${STEPS[step].demo.map(([icon, who], i) => html`<li key=${i}><${Icon} name=${icon} size=${20}/><span><strong>${t(`tourWho_${who}`)}</strong> ${t(STEPS[step].demoKey || 'tourDemo')[i]}</span></li>`)}</ol>`}
         ${waiting && html`<p class="tour-wait"><${Icon} name="arrow" size=${20}/>${t('tourWait')}</p>`}
         <div class="tour-actions">
           <button class="quiet" onClick=${onDone}>${t('tourSkip')}</button>
