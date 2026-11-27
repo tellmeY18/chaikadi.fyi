@@ -14,11 +14,18 @@
         in {
           default = pkgs.mkShell {
             packages = [ pkgs.nodejs_22 pkgs.python3 pkgs.curl pkgs.playwright-driver pkgs.treefmt pkgs.nixpkgs-fmt ]
-              ++ nixpkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.chromium ];
+              ++ nixpkgs.lib.optionals pkgs.stdenv.isLinux [
+              pkgs.chromium
+              pkgs.iw
+              pkgs.iptables
+              pkgs.linux-wifi-hotspot
+              (pkgs.writeShellScriptBin "stun-hotspot" ''exec bash ${./tools/stun-hotspot.sh} "$@"'')
+            ];
             shellHook = ''
               export PLAYWRIGHT_MODULE=${pkgs.playwright-driver}/index.mjs
               ${nixpkgs.lib.optionalString pkgs.stdenv.isLinux "export CHROME=${pkgs.chromium}/bin/chromium"}
               echo "Chaikadi: npm test | npm run test:e2e | python3 tools/serve.py"
+              echo "Phone NAT test: stun-hotspot start | stun-hotspot status | stun-hotspot stop"
               echo "No npm install or build needed. Phones require HTTPS."
             '';
           };

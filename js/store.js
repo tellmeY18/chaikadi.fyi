@@ -4,6 +4,7 @@ import { APP_VERSION, SESSION_TTL_MS, relayServers, DEFAULT_CONFIG, PRESETS, PRO
 import { newGroup, reduce, Persistence, migrate, archiveSession, addArchive, isStale } from './state.js';
 import { validUpi, normalizeUpi } from './upi.js';
 import { Network, PUBLIC_INTENTS } from './p2p.js';
+import { issueHint } from './icediag.js';
 import { orderableItems } from './data.js';
 import { log, setVerbose } from './netlog.js';
 
@@ -22,13 +23,17 @@ export class AppStore {
       // Everything else is the current session and expires after SESSION_TTL_MS idle.
       profile: { upi: '' }, archive: [], archiveNotice: null, lastActive: 0 };
     this.ui = { tab: 'lobby', status: 'Ready', notice: '', storageWarning: '', unreachable: false,
-      hostOnline: false, suggested: null, shuffling: false, ready: false, blocked: false };
+      hostOnline: false, connectionHint: null, suggested: null, shuffling: false, ready: false, blocked: false };
     this.db = new Persistence(message => { this.ui.storageWarning = message; this.emit(); });
     this.network = new Network({
       onMessage: (link, msg) => this.serial(() => this.receive(link, msg)),
       onLink: (link, online) => this.serial(() => this.linkChanged(link, online)),
       onStatus: message => { this.ui.status = message; if (this.network.roomReady) this.freshRoom = false; this.emit(); },
       onUnreachable: () => { this.ui.unreachable = true; this.emit(); },
+      onIceFailure: failure => {
+        const hint = issueHint(failure);
+        if (hint && this.ui.connectionHint !== hint) { this.ui.connectionHint = hint; this.emit(); }
+      },
       onCollision: () => this.serial(() => this.collision()),
     });
   }
@@ -225,6 +230,7 @@ export class AppStore {
   }
   startRoom() {
     if (this.ui.blocked || this.ui.superseded) return;
+    this.ui.connectionHint = null; this.emit();
     const dev = this.data.preferences?.dev || {};
     const config = { ...this.data.config, iceServers: [...(this.data.config.iceServers || []), ...relayServers(dev)], iceTransportPolicy: dev.forceRelay ? 'relay' : 'all' };
     this.network.start({ host: this.data.role === 'host', code: this.data.targetCode, config, fresh: !!this.freshRoom });
@@ -405,7 +411,7 @@ export class AppStore {
       this.data.targetCode = incoming.group.roomCode;
       this.network.code = incoming.group.roomCode;
       this.data.outbox = this.data.outbox.filter(i => i.id !== msg.payload.ack && !incoming.receipts.includes(i.id));
-      this.ui.hostOnline = true; this.ui.unreachable = false; this.ui.status = 'Connected to host'; log('info', 'synced with host', { version: incoming.group.version });
+      this.ui.hostOnline = true; this.ui.unreachable = false; this.ui.connectionHint = null; this.ui.status = 'Connected to host'; log('info', 'synced with host', { version: incoming.group.version });
       this.syncName(); this.touch(); await this.persist();
       this.syncProfile();
       if (firstSync) this.ui.tab = incoming.menu.length ? 'picks' : 'menu'; // joiners land where the action is
@@ -608,7 +614,7 @@ export class AppStore {
   async reset() {
     this.network.stop();
     Object.assign(this.data, { state: null, role: null, targetCode: '', outbox: [], credentials: {}, revoked: [], removed: false });
-    Object.assign(this.ui, { hostOnline: false, tab: 'lobby', blocked: false, unreachable: false, notice: '', status: 'Ready', suggested: null });
+    Object.assign(this.ui, { hostOnline: false, tab: 'lobby', blocked: false, unreachable: false, connectionHint: null, notice: '', status: 'Ready', suggested: null });
     await this.persist(); this.emit();
   }
   backup() { return JSON.stringify({ app: 'chaikadi.fyi', exportedAt: new Date().toISOString(), data: this.data }, null, 2); }

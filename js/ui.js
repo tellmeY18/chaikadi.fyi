@@ -659,6 +659,7 @@ class App extends Component {
           ${v.role === 'member' && s && !v.hostOnline && html`<div class="banner warning" role="status"><${Icon} name="offline"/><span>${t('hostOffline')} ${t('queued', v.pending)}</span><button class="quiet" onClick=${() => store.startRoom()}>${t('retry')}</button></div>`}
           ${v.pending > 0 && v.hostOnline && html`<p class="sync-status" role="status">${t('sending', v.pending)}</p>`}
           ${!s && v.role === 'member' && html`<div class=${`banner ${v.unreachable ? 'error' : 'info'}`} role="status">${v.unreachable ? html`<${Icon} name="alert"/><span>${t('hostUnreachable', v.targetCode)}</span><button class="quiet" onClick=${() => store.startRoom()}>${t('retry')}</button>` : html`<span>${t('connecting')}</span>`}</div>`}
+          ${!s && v.role === 'member' && v.unreachable && v.connectionHint && html`<p class="banner warning" role="status"><${Icon} name="alert"/><span>${t(`connectionHint_${v.connectionHint}`)}</span></p>`}
           ${v.tab === 'settings' ? this.settings(v) : v.tab === 'history' && (s || v.archive.length) ? this.history(v) : !s ? this.home(v) : this[v.tab]?.(v)}
         `}
       </main>

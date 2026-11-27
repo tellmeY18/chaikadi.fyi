@@ -178,3 +178,51 @@ test('ICE candidates are parsed and failures explained in words', async () => {
   assert.ok(verdict({ local: [host], remote: [host], pairs: [], errors: ['stun:x 701'] }).some(v => /STUN failed/.test(v)));
   assert.ok(verdict({ local: [host, srflx], remote: [host, srflx], pairs: [{ state: 'failed' }] }).some(v => /none worked/.test(v)));
 });
+
+test('join screen picks the right hint from a failed connection', async () => {
+  const { issueHint } = await import('../js/icediag.js');
+  assert.equal(issueHint({ verdict: ['Force relay is on but the relay (TURN) server gave no address'] }), 'relay');
+  assert.equal(issueHint({ verdict: ['no local address', 'STUN failed, so no public address was found', 'no relay (TURN) on either side, so strict networks cannot connect'] }), 'stun');
+  assert.equal(issueHint({ verdict: ['no relay (TURN) on either side, so strict networks cannot connect', '1 address pair(s) tried, none worked'] }), 'blocked');
+  assert.equal(issueHint({ verdict: ['no obvious cause found'] }), null);
+  assert.equal(issueHint(null), null);
+});
+
+test('a failed ICE diagnosis reaches the join view and clears on retry or reset', async () => {
+  const app = new AppStore(); app.db = { save: async () => {} };
+  app.data.role = 'member'; app.data.targetCode = 'ABCDE';
+  app.ui.unreachable = true;
+  app.network.onIceFailure({ verdict: ['STUN failed, so no public address was found'] });
+  assert.equal(app.view().connectionHint, 'stun');
+  app.network.onIceFailure({ verdict: ['no obvious cause found'] });
+  assert.equal(app.view().connectionHint, 'stun', 'an inconclusive report does not erase a useful hint');
+
+  app.network.start = () => {};
+  app.startRoom();
+  assert.equal(app.view().connectionHint, null, 'a retry clears the old hint');
+
+  app.ui.unreachable = true;
+  app.network.onIceFailure({ verdict: ['1 address pair(s) tried, none worked'] });
+  assert.equal(app.view().connectionHint, 'blocked');
+  await app.reset();
+  assert.equal(app.view().connectionHint, null);
+});
+
+test('a successful host sync clears a join failure hint', async () => {
+  const hostApp = await host();
+  const member = new AppStore(); member.db = { save: async () => {} };
+  const link = { id: uid(), mode: 'room', lastSeen: Date.now(), close() {} };
+  hostApp.network.links.set(link.id, link);
+  await hostApp.receive(link, { type: 'hello', senderId: member.data.identity.id,
+    payload: { token: uid(), name: 'Guest', protocol: PROTOCOL_VERSION } });
+  member.data.role = 'member'; member.data.targetCode = hostApp.data.state.group.roomCode;
+  member.ui.unreachable = true; member.ui.connectionHint = 'stun';
+  const memberLink = { id: uid(), mode: 'room', lastSeen: Date.now(), close() {} };
+  member.network.links.set(memberLink.id, memberLink);
+  await member.receive(memberLink, {
+    type: 'state', senderId: hostApp.data.identity.id,
+    payload: { protocol: PROTOCOL_VERSION, state: JSON.parse(JSON.stringify(hostApp.data.state)) },
+  });
+  assert.equal(member.view().connectionHint, null);
+  assert.equal(member.view().unreachable, false);
+});

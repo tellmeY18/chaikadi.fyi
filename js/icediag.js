@@ -33,6 +33,15 @@ export function verdict({ local, remote, pairs, errors = [], policy = 'all' }) {
   return out.length ? out : ['no obvious cause found'];
 }
 
+// Which plain-language hint a failed connection deserves, for the join screen.
+export function issueHint(failure) {
+  const verdict = failure?.verdict || [];
+  if (verdict.some(v => /Force relay is on/.test(v))) return 'relay';
+  if (verdict.some(v => /STUN failed|no public address from STUN/.test(v))) return 'stun';
+  if (verdict.some(v => /none worked|strict networks cannot connect/.test(v))) return 'blocked';
+  return null;
+}
+
 // Snapshot of an RTCPeerConnection's ICE state from getStats().
 export async function diagnose(pc, errors = []) {
   const stats = await pc.getStats();

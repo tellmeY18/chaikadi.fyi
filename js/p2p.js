@@ -15,8 +15,8 @@ export const PUBLIC_INTENTS = new Set(['member.rename', 'member.upi', 'upi.propo
 // Transport only: PeerJS room connections. Authentication and the
 // host-authoritative protocol live in store.js.
 export class Network {
-  constructor({ onMessage, onLink, onStatus, onCollision, onUnreachable }) {
-    Object.assign(this, { onMessage, onLink, onStatus, onCollision, onUnreachable });
+  constructor({ onMessage, onLink, onStatus, onCollision, onUnreachable, onIceFailure }) {
+    Object.assign(this, { onMessage, onLink, onStatus, onCollision, onUnreachable, onIceFailure });
     this.links = new Map(); this.peer = null;
     this.running = false; this.retry = null; this.connectTimer = null;
     this.roomReady = false; this.attempt = 0;
@@ -141,7 +141,7 @@ export class Network {
   attachPeer(conn) {
     let link;
     // Failed connections never become links: keep their diagnosis for Developer options.
-    const ice = instrument(conn, failure => { this.failures = [failure, ...(this.failures || [])].slice(0, 5); });
+    const ice = instrument(conn, failure => { this.failures = [failure, ...(this.failures || [])].slice(0, 5); this.onIceFailure?.(failure); });
     conn.iceReport = () => ice.report();
     conn.on('open', () => {
       link = this.addLink('room', message => conn.send(message), () => conn.close(), conn);
